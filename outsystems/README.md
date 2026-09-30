@@ -54,7 +54,7 @@ Mỗi action chỉ gồm một JavaScript node. Copy code từ file tương ứn
 | Action | Input | Output | Code |
 |---|---|---|---|
 | `MiniApp_IsAvailable` | – | `IsAvailable` (Boolean) | [client-actions/CheckPlugin.js](client-actions/CheckPlugin.js) |
-| `MiniApp_Open` | `Url` (Text, bắt buộc), `AllowedOrigins` (Text), `AllowedTypes` (Text), `CloseButtonText` (Text, mặc định `"Đóng"`), `CloseButtonIcon` (Boolean, mặc định `False`), `StatusBarColor` (Text), `ToolbarColor` (Text), `ToolbarHeight` (Integer, mặc định `0`), `ToolbarHeightClass` (Text), `AuthToken` (Text) | `IsOpened` (Boolean) | [client-actions/Open.js](client-actions/Open.js) |
+| `MiniApp_Open` | `Url` (Text, bắt buộc), `AllowedOrigins` (Text), `AllowedTypes` (Text), `CloseButtonText` (Text, mặc định `"Đóng"`), `CloseButtonIcon` (Boolean, mặc định `False`), `StatusBarColor` (Text), `ToolbarColor` (Text), `ToolbarHeight` (Integer hoặc Text), `ToolbarHeightClass` (Text), `AuthToken` (Text) | `IsOpened` (Boolean) | [client-actions/Open.js](client-actions/Open.js) |
 | `MiniApp_Close` | – | – | [client-actions/Close.js](client-actions/Close.js) |
 | `MiniApp_PostToWeb` | `Type` (Text, bắt buộc), `PayloadJson` (Text, mặc định `"{}"`) | `Success` (Boolean) | [client-actions/PostToWeb.js](client-actions/PostToWeb.js) |
 | `MiniApp_SetToken` | `Token` (Text) | `Success` (Boolean) | [client-actions/SetToken.js](client-actions/SetToken.js) |
@@ -69,7 +69,7 @@ Mỗi action chỉ gồm một JavaScript node. Copy code từ file tương ứn
 - `CloseButtonIcon`: `True` thì nút Đóng là icon X (iOS dùng SF Symbol `xmark`, Android dùng icon có sẵn của plugin), cùng màu với chữ khi không dùng icon. `CloseButtonText` khi đó không hiện ra mà chỉ là nhãn cho trình đọc màn hình, nên vẫn nên để "Đóng".
 - `StatusBarColor`: màu CSS bất kỳ, ví dụ `#1068EB`, `rgb(16,104,235)` hay `red`. Để trống thì dùng màu primary của app.
 - `ToolbarColor`: màu CSS bất kỳ. Để trống thì dùng màu của status bar. Truyền `"#FFFFFF"` nếu muốn toolbar trắng. Khi đó nút Đóng dùng màu primary.
-- `ToolbarHeight`: chiều cao toolbar, tính bằng CSS px. Trong app OutSystems, 1 CSS px bằng 1dp trên Android và 1pt trên iOS, nên cứ truyền đúng chiều cao header của app là khớp. Để `0` thì wrapper lấy chiều cao theo thứ tự: đo từ `ToolbarHeightClass`, rồi biến `--header-size` của theme OutSystems UI (mặc định `56px`, không gồm status bar), rồi chiều cao mặc định của plugin. Trên iOS nên để từ 44 trở lên, vì thấp hơn thì nút có thể tràn ra ngoài toolbar.
+- `ToolbarHeight`: chiều cao toolbar, tính bằng CSS px. Trong app OutSystems, 1 CSS px bằng 1dp trên Android và 1pt trên iOS, nên cứ truyền đúng chiều cao header của app là khớp. Input này nhận được Integer (`56`) hoặc Text (`"56"`, `"56px"`, `"3.5rem"`). Giá trị nhỏ hơn **44** được nâng lên 44, vì các nút của toolbar iOS cần tối thiểu 44pt; thấp hơn thì nút tràn lên status bar, còn trên Android chữ bị cắt. Để trống hoặc `0` thì wrapper lấy chiều cao theo thứ tự: giá trị `height` khai báo cho `ToolbarHeightClass`, rồi biến `--header-size` của theme OutSystems UI (mặc định `56px`, không gồm status bar), rồi chiều cao mặc định của plugin.
 - `ToolbarHeightClass`: tên class CSS để đọc giá trị `height` được khai báo cho class đó trong stylesheet của app, ví dụ `header-top` (có hay không có dấu `.` đều được, nhiều class thì cách nhau bằng dấu cách). Wrapper chỉ đọc giá trị `height`, không đo cả khối phần tử, nên padding và border không bị cộng vào. Giá trị `var(...)`, `rem` hay `calc()` được quy đổi ra px.
   - Chỉ tính rule có selector **đúng bằng** class, kể cả khi nằm trong danh sách selector (`.a, .header-top`). Rule có selector lồng như `.layout .header-top` không được tính.
   - Nếu có nhiều rule như vậy thì rule khai báo sau cùng được dùng. Rule trong `@media` không khớp với máy thì bị bỏ qua. Rule trong `@import` và `@supports` vẫn được đọc.
@@ -169,7 +169,7 @@ Màu:
 
 - [ ] iOS: vùng status bar và toolbar cùng màu primary của app. Với primary đậm, chữ status bar và nút Đóng màu trắng.
 - [ ] iOS với primary sáng (thử `StatusBarColor: "#FFD600"`): chữ status bar và nút Đóng màu tối.
-- [ ] Chiều cao toolbar bằng chiều cao header của app (mặc định 56). Thử thêm `ToolbarHeight: 64`: nút Đóng vẫn nằm giữa theo chiều dọc.
+- [ ] Chiều cao toolbar bằng chiều cao header của app (mặc định 56). Thử thêm `ToolbarHeight: "64px"`: toolbar cao hơn, nút Đóng vẫn nằm giữa theo chiều dọc. `ToolbarHeight: "20px"` cho ra 44.
 - [ ] `ToolbarHeightClass: "header-top"`: toolbar cao bằng phần header dưới status bar (56 với theme mặc định).
 - [ ] `CloseButtonIcon: True`: iOS và Android hiện icon X đúng màu, bấm vào thì đóng mini app. Bật VoiceOver/TalkBack: nút được đọc là "Đóng".
 - [ ] iOS: nếu chữ status bar không đổi màu, kiểm tra `Info.plist` của app. Nếu `UIViewControllerBasedStatusBarAppearance` là `NO`, iOS bỏ qua style riêng của InAppBrowser và dùng style chung của app.

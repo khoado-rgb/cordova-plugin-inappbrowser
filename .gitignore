@@ -32,3 +32,6 @@ node_modules
 # ASF release workspace
 .asf-release/
 !.asf-release/.gitkeep
+
+# Local review reports, not published
+*[Rr][Ee][Vv][Ii][Ee][Ww]*.md

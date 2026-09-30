@@ -9,9 +9,10 @@
 //                                  only names the button for VoiceOver/TalkBack.
 //          StatusBarColor (Text) - any CSS color. Empty = the app primary color (--color-primary).
 //          ToolbarColor (Text)   - any CSS color. Empty = same as the status bar.
-//          ToolbarHeight (Integer, default 0) - in CSS px, which are dp on Android and pt on iOS.
-//                                  0 = the height declared for ToolbarHeightClass, else the app header height
-//                                  (--header-size), else the plugin default.
+//          ToolbarHeight (Integer or Text) - in CSS px, which are dp on Android and pt on iOS:
+//                                  56, "56", "56px" or "3.5rem". At least 44, the height the iOS toolbar
+//                                  buttons need. Empty or 0 = the height declared for ToolbarHeightClass,
+//                                  else the app header height (--header-size), else the plugin default.
 //          ToolbarHeightClass (Text) - CSS class whose declared height to use, e.g. "header-top".
 //          AuthToken (Text)      - JWT handed to the web on MiniAppBridge.getToken().
 //                                  Empty = asked for through OnTokenRequest on the first getToken().
@@ -62,6 +63,13 @@ function toPx(length) {
     var px = parseFloat(getComputedStyle(probe).height) || 0;
     document.body.removeChild(probe);
     return px;
+}
+
+// A height given as a number (56) or as text ("56", "56px", "3.5rem"), in px. 0 when empty or invalid.
+function heightPx(value) {
+    if (typeof value === 'number') return value;
+    var text = String(value || '').trim();
+    return /^\d+(\.\d+)?$/.test(text) ? Number(text) : toPx(text);
 }
 
 // The height declared for these CSS classes in the app stylesheets, in px: "header-top" reads
@@ -142,9 +150,13 @@ var buttonColor = !isLight(toolbarColor) ? '#FFFFFF'
     : (primaryColor && !isLight(primaryColor) ? primaryColor : '#1C1C1E');
 var closeText = ($parameters.CloseButtonText || 'Đóng').replace(/[,=]/g, ' ');
 // Same height as the app header: given, or declared for a CSS class, or OutSystems UI --header-size.
-var toolbarHeight = Math.round($parameters.ToolbarHeight > 0 ? $parameters.ToolbarHeight
+var givenHeight = heightPx($parameters.ToolbarHeight);
+var toolbarHeight = Math.round(givenHeight > 0 ? givenHeight
     : classHeight($parameters.ToolbarHeightClass) ||
         toPx(getComputedStyle(document.documentElement).getPropertyValue('--header-size')));
+if (toolbarHeight > 0 && toolbarHeight < 44) {
+    toolbarHeight = 44;
+}
 
 var common = 'toolbarcolor=' + toolbarColor +
     (toolbarHeight > 0 ? ',toolbarheight=' + toolbarHeight : '') +
