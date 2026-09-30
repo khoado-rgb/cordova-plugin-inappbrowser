@@ -18,6 +18,7 @@
 */
 
 #import "CDVInAppBrowserOptions.h"
+#import <objc/runtime.h>
 
 @implementation CDVInAppBrowserOptions
 
@@ -47,6 +48,8 @@
         self.beforeload = @"";
         self.statusbarcolor = nil;
         self.statusbarstyle = nil;
+        self.closebuttonicon = NO;
+        self.toolbarheight = 0;
     }
 
     return self;
@@ -75,7 +78,11 @@
 
             // set the property according to the key name
             if ([obj respondsToSelector:NSSelectorFromString(key)]) {
-                if (isNumber) {
+                // OutSystems fork: text options (captions, colors, ...) stay text even when they look
+                // like a number or yes/no. An NSNumber in an NSString property crashes where it is used.
+                if ([self isStringProperty:key]) {
+                    [obj setValue:value forKey:key];
+                } else if (isNumber) {
                     [obj setValue:[numberFormatter numberFromString:value_lc] forKey:key];
                 } else if (isBoolean) {
                     [obj setValue:[NSNumber numberWithBool:[value_lc isEqualToString:@"yes"]] forKey:key];
@@ -87,6 +94,13 @@
     }
 
     return obj;
+}
+
++ (BOOL)isStringProperty:(NSString *)key
+{
+    objc_property_t property = class_getProperty(self, [key UTF8String]);
+    const char *attributes = property != NULL ? property_getAttributes(property) : NULL;
+    return attributes != NULL && strncmp(attributes, "T@\"NSString\"", 12) == 0;
 }
 
 @end

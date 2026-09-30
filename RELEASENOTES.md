@@ -20,6 +20,15 @@
 -->
 # Release Notes
 
+## 7.0.1-os.2
+
+* feat: `closebuttonicon` open option (iOS, Android) to show the close button as an X icon; `closebuttoncaption` then labels it for VoiceOver/TalkBack
+* feat: `toolbarheight` open option (iOS, Android), in points/dp without the safe area
+* fix(ios): report a `loaderror` and reload once when the web content process is terminated, instead of leaving a blank page
+* fix(ios): keep text options as text; a number-like or yes/no `closebuttoncaption` crashed, and `beforeload=no` enabled beforeload
+* fix(android): set the status bar icon style with the legacy flag too, which Android 11 needs on some devices
+* feat(outsystems): `CloseButtonIcon`, `ToolbarHeight` and `ToolbarHeightClass` inputs on `MiniApp_Open`; the toolbar height is measured from a CSS class or follows `--header-size`
+
 ## 7.0.1-os.1
 
 Fork of `master` (7.0.1-dev) for OutSystems MABS builds. See `outsystems/README.md`.

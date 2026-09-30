@@ -127,10 +127,14 @@ public class InAppBrowser extends CordovaPlugin {
     // OutSystems fork: status bar color (#RRGGBB) and icon style (lightcontent, darkcontent)
     private static final String STATUS_BAR_COLOR = "statusbarcolor";
     private static final String STATUS_BAR_STYLE = "statusbarstyle";
+    // OutSystems fork: close button as an X icon; closebuttoncaption then only labels it for TalkBack
+    private static final String CLOSE_BUTTON_ICON = "closebuttonicon";
+    // OutSystems fork: toolbar height in dp; default TOOLBAR_HEIGHT
+    private static final String TOOLBAR_HEIGHT_OPTION = "toolbarheight";
 
     private static final int TOOLBAR_HEIGHT = 48;
 
-    private static final List customizableOptions = Arrays.asList(CLOSE_BUTTON_CAPTION, TOOLBAR_COLOR, NAVIGATION_COLOR, CLOSE_BUTTON_COLOR, FOOTER_COLOR, STATUS_BAR_COLOR, STATUS_BAR_STYLE);
+    private static final List customizableOptions = Arrays.asList(CLOSE_BUTTON_CAPTION, TOOLBAR_COLOR, NAVIGATION_COLOR, CLOSE_BUTTON_COLOR, FOOTER_COLOR, STATUS_BAR_COLOR, STATUS_BAR_STYLE, TOOLBAR_HEIGHT_OPTION);
 
     private InAppBrowserDialog dialog;
     private WebView inAppWebView;
@@ -161,6 +165,8 @@ public class InAppBrowser extends CordovaPlugin {
     private boolean fullscreen = true;
     private Integer statusBarColor = null;
     private String statusBarStyle = "";
+    private boolean closeButtonIcon = false;
+    private int toolbarHeight = TOOLBAR_HEIGHT;
     private String[] allowedSchemes;
     private InAppBrowserClient currentClient;
 
@@ -650,6 +656,8 @@ public class InAppBrowser extends CordovaPlugin {
         mediaPlaybackRequiresUserGesture = false;
         statusBarColor = null;
         statusBarStyle = "";
+        closeButtonIcon = false;
+        toolbarHeight = TOOLBAR_HEIGHT;
 
         if (features != null) {
             String show = features.get(LOCATION);
@@ -747,6 +755,18 @@ public class InAppBrowser extends CordovaPlugin {
             if (statusBarStyleSet != null) {
                 statusBarStyle = statusBarStyleSet;
             }
+            closeButtonIcon = "yes".equals(features.get(CLOSE_BUTTON_ICON));
+            String toolbarHeightSet = features.get(TOOLBAR_HEIGHT_OPTION);
+            if (toolbarHeightSet != null) {
+                try {
+                    int height = Math.round(Float.parseFloat(toolbarHeightSet));
+                    if (height > 0) {
+                        toolbarHeight = height;
+                    }
+                } catch (NumberFormatException e) {
+                    LOG.e(LOG_TAG, "Invalid toolbarheight: " + toolbarHeightSet);
+                }
+            }
         }
 
         final CordovaWebView thatWebView = this.webView;
@@ -801,7 +821,7 @@ public class InAppBrowser extends CordovaPlugin {
                 View _close;
                 Resources activityRes = cordova.getActivity().getResources();
 
-                if (closeButtonCaption != "") {
+                if (closeButtonCaption != "" && !closeButtonIcon) {
                     // Use TextView for text
                     TextView close = new TextView(cordova.getActivity());
                     close.setText(closeButtonCaption);
@@ -829,7 +849,8 @@ public class InAppBrowser extends CordovaPlugin {
                 _close.setLayoutParams(closeLayoutParams);
                 _close.setBackground(null);
 
-                _close.setContentDescription("Close Button");
+                // With closebuttonicon, the caption names the icon for TalkBack
+                _close.setContentDescription(closeButtonCaption != "" ? closeButtonCaption : "Close Button");
                 _close.setId(Integer.valueOf(id));
                 _close.setOnClickListener(new View.OnClickListener() {
                     public void onClick(View v) {
@@ -859,16 +880,22 @@ public class InAppBrowser extends CordovaPlugin {
                 }
                 // Same values as iOS: darkcontent = dark icons, for a light status bar color.
                 boolean darkIcons = statusBarStyle.equals("darkcontent");
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    window.getInsetsController().setSystemBarsAppearance(
-                            darkIcons ? WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS : 0,
-                            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    // Also set from Android 11: there the insets controller alone does not always
+                    // take effect (AndroidX WindowInsetsControllerCompat sets both as well).
                     View decor = window.getDecorView();
                     int flags = decor.getSystemUiVisibility();
                     decor.setSystemUiVisibility(darkIcons
                             ? flags | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
                             : flags & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    WindowInsetsController controller = window.getInsetsController();
+                    if (controller != null) {
+                        controller.setSystemBarsAppearance(
+                                darkIcons ? WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS : 0,
+                                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+                    }
                 }
             }
 
@@ -930,7 +957,7 @@ public class InAppBrowser extends CordovaPlugin {
                 RelativeLayout toolbar = new RelativeLayout(cordova.getActivity());
                 //Please, no more black!
                 toolbar.setBackgroundColor(toolbarColor);
-                toolbar.setLayoutParams(new RelativeLayout.LayoutParams(LayoutParams.MATCH_PARENT, this.dpToPixels(TOOLBAR_HEIGHT)));
+                toolbar.setLayoutParams(new RelativeLayout.LayoutParams(LayoutParams.MATCH_PARENT, this.dpToPixels(toolbarHeight)));
                 toolbar.setPadding(this.dpToPixels(2), this.dpToPixels(2), this.dpToPixels(2), this.dpToPixels(2));
                 if (leftToRight) {
                     toolbar.setHorizontalGravity(Gravity.LEFT);

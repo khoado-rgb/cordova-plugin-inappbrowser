@@ -2,11 +2,16 @@
 
 Bản fork của [apache/cordova-plugin-inappbrowser](https://github.com/apache/cordova-plugin-inappbrowser) tại nhánh `master` (7.0.1-dev), dùng để mở website của đối tác như một mini app trong app mobile OutSystems. Kèm theo là code cho module wrapper trong OutSystems và script cho phía đối tác.
 
-Khác biệt so với bản gốc (`7.0.1-os.1`):
+Khác biệt so với bản gốc (`7.0.1-os.2`):
 
 - **Option mới `statusbarcolor` và `statusbarstyle`** (iOS và Android). `statusbarcolor=#RRGGBB` là màu nền vùng status bar. `statusbarstyle=lightcontent|darkcontent` là màu chữ và icon status bar. Option này áp dụng cho từng lần mở và được ưu tiên hơn preference `InAppBrowserStatusBarStyle`.
+- **Option mới `closebuttonicon=yes`** (iOS và Android): nút Đóng là icon X thay cho chữ. Khi đó `closebuttoncaption` chỉ dùng làm nhãn cho VoiceOver/TalkBack. Ở bản gốc, iOS dưới 26 luôn hiện chữ ("Done" hoặc caption).
 - **iOS:** khi không truyền `statusbarcolor`, vùng status bar được tô cùng màu toolbar (nếu toolbar ở trên), hoặc theo màu nền hệ thống. Bản gốc để trống vùng này, nên status bar thường hiện nền đen.
 - **Android 15 trở lên (targetSdk 35):** Android ép cửa sổ InAppBrowser vẽ tràn viền (edge-to-edge), nên ở bản gốc toolbar bị status bar đè, còn web bị thanh điều hướng và bàn phím che. Bản fork chừa lề theo system bar và bàn phím, rồi tô vùng status bar bằng `statusbarcolor` (không có thì dùng màu toolbar). Từ Android 14 trở xuống, màu được đặt bằng `setStatusBarColor`.
+- **Option mới `toolbarheight`** (iOS và Android): chiều cao toolbar, tính bằng dp trên Android và pt trên iOS, không gồm safe area. Mặc định của bản gốc là 48dp trên Android và khoảng 60pt trên iOS.
+- **iOS:** khi iOS kill WebContent process của mini app (thường do thiếu bộ nhớ), plugin báo `loaderror` rồi tự tải lại trang. Nếu process lại bị kill trong vòng 10 giây thì không tải lại nữa, để tránh vòng lặp. Bản gốc chỉ để trang trắng.
+- **iOS:** option dạng chuỗi (caption, màu, ...) luôn được giữ là chuỗi. Ở bản gốc, `closebuttoncaption=1` hay `closebuttoncaption=No` làm app crash, vì giá trị bị đọc thành số hoặc Boolean. Cũng nhờ vậy `beforeload=no` giờ được hiểu đúng là tắt.
+- **Android 11:** màu icon status bar được đặt bằng cả `WindowInsetsController` lẫn cờ kiểu cũ, vì trên một số máy Android 11 chỉ một cách là không đủ.
 - Plugin yêu cầu cordova-android ≥ 10.0.0, vì code dùng API 30 (`WindowInsets.Type`).
 
 Đã kiểm tra khai báo engine với MABS: cordova-ios 7.1.1 và cordova-android 14.0.1. Code native đã compile với header cordova-ios 7.1.1 và Android SDK 35.
@@ -19,11 +24,11 @@ Plugin được publish từ repo [khoado-rgb/cordova-plugin-inappbrowser](https
 
 ```sh
 git push origin master
-git tag 7.0.1-os.1
-git push origin 7.0.1-os.1
+git tag 7.0.1-os.2
+git push origin 7.0.1-os.2
 ```
 
-MABS lấy plugin theo tag, nên mỗi lần sửa plugin phải tạo tag mới (`7.0.1-os.2`, ...) và cập nhật URL trong Extensibility Configurations. Không sửa lại một tag đã dùng để build.
+MABS lấy plugin theo tag, nên mỗi lần sửa plugin phải tạo tag mới (`7.0.1-os.3`, ...) và cập nhật URL trong Extensibility Configurations. Không sửa lại một tag đã dùng để build.
 
 Nếu repo để private, MABS phải có quyền đọc repo. Khi đó dùng URL có token, hoặc để repo public.
 
@@ -34,7 +39,7 @@ Nếu repo để private, MABS phải có quyền đọc repo. Khi đó dùng UR
 ```json
 {
   "plugin": {
-    "url": "https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.1"
+    "url": "https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.2"
   }
 }
 ```
@@ -49,7 +54,7 @@ Mỗi action chỉ gồm một JavaScript node. Copy code từ file tương ứn
 | Action | Input | Output | Code |
 |---|---|---|---|
 | `MiniApp_IsAvailable` | – | `IsAvailable` (Boolean) | [client-actions/CheckPlugin.js](client-actions/CheckPlugin.js) |
-| `MiniApp_Open` | `Url` (Text, bắt buộc), `AllowedOrigins` (Text), `AllowedTypes` (Text), `CloseButtonText` (Text, mặc định `"Đóng"`), `StatusBarColor` (Text), `ToolbarColor` (Text), `AuthToken` (Text) | `IsOpened` (Boolean) | [client-actions/Open.js](client-actions/Open.js) |
+| `MiniApp_Open` | `Url` (Text, bắt buộc), `AllowedOrigins` (Text), `AllowedTypes` (Text), `CloseButtonText` (Text, mặc định `"Đóng"`), `CloseButtonIcon` (Boolean, mặc định `False`), `StatusBarColor` (Text), `ToolbarColor` (Text), `ToolbarHeight` (Integer, mặc định `0`), `ToolbarHeightClass` (Text), `AuthToken` (Text) | `IsOpened` (Boolean) | [client-actions/Open.js](client-actions/Open.js) |
 | `MiniApp_Close` | – | – | [client-actions/Close.js](client-actions/Close.js) |
 | `MiniApp_PostToWeb` | `Type` (Text, bắt buộc), `PayloadJson` (Text, mặc định `"{}"`) | `Success` (Boolean) | [client-actions/PostToWeb.js](client-actions/PostToWeb.js) |
 | `MiniApp_SetToken` | `Token` (Text) | `Success` (Boolean) | [client-actions/SetToken.js](client-actions/SetToken.js) |
@@ -61,8 +66,11 @@ Mỗi action chỉ gồm một JavaScript node. Copy code từ file tương ứn
   - Message từ app (`MiniApp_PostToWeb`, token) chỉ được giao khi trang chính đang ở một origin trong danh sách.
 - `AllowedTypes`: danh sách `type` mà web được phép gửi, ví dụ `openPayment,share`. Type `close` và `getToken` luôn được chấp nhận. Message có type ngoài danh sách sẽ bị bỏ qua.
 - `CloseButtonText`: không được chứa dấu phẩy.
+- `CloseButtonIcon`: `True` thì nút Đóng là icon X (iOS dùng SF Symbol `xmark`, Android dùng icon có sẵn của plugin), cùng màu với chữ khi không dùng icon. `CloseButtonText` khi đó không hiện ra mà chỉ là nhãn cho trình đọc màn hình, nên vẫn nên để "Đóng".
 - `StatusBarColor`: màu CSS bất kỳ, ví dụ `#1068EB`, `rgb(16,104,235)` hay `red`. Để trống thì dùng màu primary của app.
 - `ToolbarColor`: màu CSS bất kỳ. Để trống thì dùng màu của status bar. Truyền `"#FFFFFF"` nếu muốn toolbar trắng. Khi đó nút Đóng dùng màu primary.
+- `ToolbarHeight`: chiều cao toolbar, tính bằng CSS px. Trong app OutSystems, 1 CSS px bằng 1dp trên Android và 1pt trên iOS, nên cứ truyền đúng chiều cao header của app là khớp. Để `0` thì wrapper lấy chiều cao theo thứ tự: đo từ `ToolbarHeightClass`, rồi biến `--header-size` của theme OutSystems UI (mặc định `56px`, không gồm status bar), rồi chiều cao mặc định của plugin. Trên iOS nên để từ 44 trở lên, vì thấp hơn thì nút có thể tràn ra ngoài toolbar.
+- `ToolbarHeightClass`: tên class CSS để lấy chiều cao, ví dụ `header-top` (có hay không có dấu `.` đều được, nhiều class thì cách nhau bằng dấu cách). Wrapper đo phần tử đầu tiên có class đó đang hiển thị trên screen. Nếu screen không có phần tử nào như vậy, wrapper tạo tạm một phần tử ẩn có class đó để đo; cách này chỉ đúng khi rule CSS của class không phụ thuộc phần tử cha. Với OutSystems UI, dùng `header-top` chứ **không dùng `header`**, vì `.header` có thêm padding bằng chiều cao status bar.
 - `AuthToken`: JWT giao cho web khi web gọi `MiniAppBridge.getToken()`. Để trống thì app chỉ lấy token khi web cần, qua event `OnTokenRequest` (xem mục 3).
 
 `MiniApp_SetToken` lưu token mới và trả lời các lần gọi `getToken()` đang chờ. Truyền `Token` rỗng nghĩa là không lấy được token, khi đó các lần gọi đang chờ bị reject. Output `Success` là False nếu không có mini app nào đang mở.
@@ -157,6 +165,9 @@ Màu:
 
 - [ ] iOS: vùng status bar và toolbar cùng màu primary của app. Với primary đậm, chữ status bar và nút Đóng màu trắng.
 - [ ] iOS với primary sáng (thử `StatusBarColor: "#FFD600"`): chữ status bar và nút Đóng màu tối.
+- [ ] Chiều cao toolbar bằng chiều cao header của app (mặc định 56). Thử thêm `ToolbarHeight: 64`: nút Đóng vẫn nằm giữa theo chiều dọc.
+- [ ] `ToolbarHeightClass: "header-top"` trên một screen có header: toolbar cao bằng phần header dưới status bar.
+- [ ] `CloseButtonIcon: True`: iOS và Android hiện icon X đúng màu, bấm vào thì đóng mini app. Bật VoiceOver/TalkBack: nút được đọc là "Đóng".
 - [ ] iOS: nếu chữ status bar không đổi màu, kiểm tra `Info.plist` của app. Nếu `UIViewControllerBasedStatusBarAppearance` là `NO`, iOS bỏ qua style riêng của InAppBrowser và dùng style chung của app.
 - [ ] Android 14 trở xuống: status bar màu primary, icon status bar đúng màu (trắng hoặc tối).
 - [ ] **Android 15 trở lên:** toolbar nằm dưới status bar, vùng status bar màu primary, web không bị thanh điều hướng che.

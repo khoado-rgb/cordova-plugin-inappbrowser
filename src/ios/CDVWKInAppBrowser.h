@@ -84,7 +84,7 @@ typedef NSDictionary CDVSettingsDictionary;
 - (void)navigateTo:(NSURL *)url;
 - (void)showLocationBar:(BOOL)show;
 - (void)showToolBar:(BOOL)show atPosition:(NSString *)toolbarPosition;
-- (void)setCloseButtonTitle:(NSString *)title withColor:(NSString *)colorString atIndex:(int)buttonIndex;
+- (void)setCloseButtonTitle:(NSString *)title withColor:(NSString *)colorString asIcon:(BOOL)asIcon atIndex:(int)buttonIndex;
 - (id)initWithBrowserOptions:(CDVInAppBrowserOptions *)browserOptions andSettings:(CDVSettingsDictionary *)settings;
 
 @end

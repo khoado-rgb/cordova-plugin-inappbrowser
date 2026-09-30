@@ -49,6 +49,10 @@
 // OutSystems fork: status bar backdrop color (#RRGGBB) and text style (lightcontent, darkcontent, default)
 @property (nonatomic, copy) NSString *statusbarcolor;
 @property (nonatomic, copy) NSString *statusbarstyle;
+// OutSystems fork: close button as an X icon; closebuttoncaption then only labels it for VoiceOver
+@property (nonatomic, assign) BOOL closebuttonicon;
+// OutSystems fork: toolbar height in points, without the safe area; 0 = system height
+@property (nonatomic, assign) double toolbarheight;
 
 + (CDVInAppBrowserOptions *)parseOptions:(NSString *)options;
 

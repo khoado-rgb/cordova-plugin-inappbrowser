@@ -139,9 +139,9 @@ static UIBarButtonSystemItem CDVWKInAppBrowserCloseButtonSystemItem(void)
 
     [self.inAppBrowserViewController showLocationBar:browserOptions.location];
     [self.inAppBrowserViewController showToolBar:browserOptions.toolbar atPosition:browserOptions.toolbarposition];
-    if (browserOptions.closebuttoncaption != nil || browserOptions.closebuttoncolor != nil) {
+    if (browserOptions.closebuttoncaption != nil || browserOptions.closebuttoncolor != nil || browserOptions.closebuttonicon) {
         int closeButtonIndex = browserOptions.lefttoright ? (browserOptions.hidenavigationbuttons ? 1 : 4) : 0;
-        [self.inAppBrowserViewController setCloseButtonTitle:browserOptions.closebuttoncaption withColor:browserOptions.closebuttoncolor atIndex:closeButtonIndex];
+        [self.inAppBrowserViewController setCloseButtonTitle:browserOptions.closebuttoncaption withColor:browserOptions.closebuttoncolor asIcon:browserOptions.closebuttonicon atIndex:closeButtonIndex];
     }
     // Set Presentation Style
     UIModalPresentationStyle presentationStyle = UIModalPresentationFullScreen; // default
@@ -1030,13 +1030,24 @@ BOOL isExiting = NO;
         [self.toolbarBackground.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor]
     ]];
     
-    // Constrain Toolbar inside Toolbar background view with margin
-    [NSLayoutConstraint activateConstraints:@[
-        [self.toolbar.topAnchor constraintEqualToAnchor:self.toolbarBackground.layoutMarginsGuide.topAnchor],
-        [self.toolbar.bottomAnchor constraintEqualToAnchor:self.toolbarBackground.layoutMarginsGuide.bottomAnchor],
-        [self.toolbar.leadingAnchor constraintEqualToAnchor:self.toolbarBackground.layoutMarginsGuide.leadingAnchor],
-        [self.toolbar.trailingAnchor constraintEqualToAnchor:self.toolbarBackground.layoutMarginsGuide.trailingAnchor]
-    ]];
+    if (_browserOptions.toolbarheight > 0) {
+        // OutSystems fork: fixed toolbar height, not counting the safe area (home indicator for a
+        // bottom toolbar), to match the app header. The bar keeps its own height, centered in it.
+        [NSLayoutConstraint activateConstraints:@[
+            [self.toolbarBackground.safeAreaLayoutGuide.heightAnchor constraintEqualToConstant:_browserOptions.toolbarheight],
+            [self.toolbar.centerYAnchor constraintEqualToAnchor:self.toolbarBackground.safeAreaLayoutGuide.centerYAnchor],
+            [self.toolbar.leadingAnchor constraintEqualToAnchor:self.toolbarBackground.layoutMarginsGuide.leadingAnchor],
+            [self.toolbar.trailingAnchor constraintEqualToAnchor:self.toolbarBackground.layoutMarginsGuide.trailingAnchor]
+        ]];
+    } else {
+        // Constrain Toolbar inside Toolbar background view with margin
+        [NSLayoutConstraint activateConstraints:@[
+            [self.toolbar.topAnchor constraintEqualToAnchor:self.toolbarBackground.layoutMarginsGuide.topAnchor],
+            [self.toolbar.bottomAnchor constraintEqualToAnchor:self.toolbarBackground.layoutMarginsGuide.bottomAnchor],
+            [self.toolbar.leadingAnchor constraintEqualToAnchor:self.toolbarBackground.layoutMarginsGuide.leadingAnchor],
+            [self.toolbar.trailingAnchor constraintEqualToAnchor:self.toolbarBackground.layoutMarginsGuide.trailingAnchor]
+        ]];
+    }
 
     // Address background horizontal constraints with margin
     [NSLayoutConstraint activateConstraints:@[
@@ -1152,13 +1163,25 @@ BOOL isExiting = NO;
     [self.webView setFrame:frame];
 }
 
-- (void)setCloseButtonTitle:(NSString *)title withColor:(NSString *)colorString atIndex:(int)buttonIndex
+- (void)setCloseButtonTitle:(NSString *)title withColor:(NSString *)colorString asIcon:(BOOL)asIcon atIndex:(int)buttonIndex
 {
     // The system Close/Done button title is localized automatically.
     // If a custom caption is provided, create a title-based button instead.
     self.closeButton = nil;
-    // Initialize with title if set, otherwise use the system-localized Close/Done item.
-    self.closeButton = title != nil ? [[UIBarButtonItem alloc] initWithTitle:title style:UIBarButtonItemStylePlain target:self action:@selector(close)] : [[UIBarButtonItem alloc] initWithBarButtonSystemItem:CDVWKInAppBrowserCloseButtonSystemItem() target:self action:@selector(close)];
+    if (asIcon) {
+        // OutSystems fork: an X icon on every iOS version. The caption, if any, only names it for VoiceOver.
+        UIImage *icon = nil;
+        if (@available(iOS 13.0, *)) {
+            icon = [UIImage systemImageNamed:@"xmark"];
+        }
+        self.closeButton = icon != nil
+            ? [[UIBarButtonItem alloc] initWithImage:icon style:UIBarButtonItemStylePlain target:self action:@selector(close)]
+            : [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemStop target:self action:@selector(close)];
+        self.closeButton.accessibilityLabel = title ?: NSLocalizedString(@"Close", nil);
+    } else {
+        // Initialize with title if set, otherwise use the system-localized Close/Done item.
+        self.closeButton = title != nil ? [[UIBarButtonItem alloc] initWithTitle:title style:UIBarButtonItemStylePlain target:self action:@selector(close)] : [[UIBarButtonItem alloc] initWithBarButtonSystemItem:CDVWKInAppBrowserCloseButtonSystemItem() target:self action:@selector(close)];
+    }
     self.closeButton.enabled = YES;
     // If color on closebutton is requested then initialize with that that color, otherwise use initialize with default.
     self.closeButton.tintColor = colorString != nil ? [self colorFromHexString:colorString] : [UIColor colorWithRed:60.0 / 255.0 green:136.0 / 255.0 blue:230.0 / 255.0 alpha:1];
@@ -1347,6 +1370,31 @@ decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler
 - (void)webView:(WKWebView *)theWebView didFailProvisionalNavigation:(null_unspecified WKNavigation *)navigation withError:(nonnull NSError *)error
 {
     [self webView:theWebView failedNavigation:@"didFailProvisionalNavigation" withError:error];
+}
+
+// OutSystems fork: iOS killed the web content process (usually under memory pressure), which
+// leaves a blank page. Report it as a loaderror, then reload. A page killed again within 10 s
+// stays blank rather than reloading in a loop; the user can still close the browser.
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)theWebView
+{
+    static CFAbsoluteTime lastTermination = 0;
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    BOOL shouldReload = now - lastTermination > 10.0;
+    lastTermination = now;
+
+    NSError *error = [NSError errorWithDomain:WKErrorDomain
+                                         code:WKErrorWebContentProcessTerminated
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Web content process terminated"}];
+    [self webView:theWebView failedNavigation:@"webViewWebContentProcessDidTerminate" withError:error];
+
+    if (!shouldReload) {
+        return;
+    }
+    if (theWebView.URL != nil) {
+        [theWebView reload];
+    } else if (self.currentURL != nil) {
+        [self navigateTo:self.currentURL];
+    }
 }
 
 #pragma mark WKScriptMessageHandler delegate

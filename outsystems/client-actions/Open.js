@@ -5,8 +5,14 @@
 //          AllowedTypes (Text)   - comma separated message types the web may send, e.g. "openPayment,share".
 //                                  "close" and "getToken" are always allowed.
 //          CloseButtonText (Text, default "Đóng") - must not contain commas.
+//          CloseButtonIcon (Boolean, default False) - X icon instead of the text; the text then
+//                                  only names the button for VoiceOver/TalkBack.
 //          StatusBarColor (Text) - any CSS color. Empty = the app primary color (--color-primary).
 //          ToolbarColor (Text)   - any CSS color. Empty = same as the status bar.
+//          ToolbarHeight (Integer, default 0) - in CSS px, which are dp on Android and pt on iOS.
+//                                  0 = measured from ToolbarHeightClass, else the app header height
+//                                  (--header-size), else the plugin default.
+//          ToolbarHeightClass (Text) - CSS class to take the height from, e.g. "header-top".
 //          AuthToken (Text)      - JWT handed to the web on MiniAppBridge.getToken().
 //                                  Empty = asked for through OnTokenRequest on the first getToken().
 // Output:  IsOpened (Boolean)
@@ -43,6 +49,39 @@ function toHex(color) {
     return '#' + rgb.slice(1, 4).map(function (c) {
         return ('0' + Math.round(Number(c)).toString(16)).slice(-2);
     }).join('').toUpperCase();
+}
+
+// A CSS length (px, rem, calc(), ...) in px. Returns 0 when it is empty or invalid.
+function toPx(length) {
+    var probe = document.createElement('div');
+    probe.style.position = 'absolute';
+    probe.style.visibility = 'hidden';
+    probe.style.height = (length || '').trim();
+    if (!probe.style.height) return 0;
+    document.body.appendChild(probe);
+    var px = parseFloat(getComputedStyle(probe).height) || 0;
+    document.body.removeChild(probe);
+    return px;
+}
+
+// Height in px of the first rendered element with these CSS classes ("header-top", ".a.b").
+// When none is on screen, of a hidden probe element with them, which works for rules that do
+// not depend on a parent. Returns 0 when the classes are empty, invalid or have no height.
+function classHeight(classes) {
+    var names = (classes || '').split(/[\s.]+/).filter(Boolean);
+    if (names.length === 0 || !names.every(function (n) { return /^[\w-]+$/.test(n); })) return 0;
+    var elements = document.querySelectorAll('.' + names.join('.'));
+    for (var i = 0; i < elements.length; i++) {
+        var height = elements[i].getBoundingClientRect().height;
+        if (height > 0) return height;
+    }
+    var probe = document.createElement('div');
+    probe.className = names.join(' ');
+    probe.style.visibility = 'hidden';
+    document.body.appendChild(probe);
+    var probeHeight = probe.getBoundingClientRect().height;
+    document.body.removeChild(probe);
+    return probeHeight;
 }
 
 // True when white text and icons get less than 3:1 contrast on this color (WCAG minimum for
@@ -85,13 +124,19 @@ var toolbarColor = toHex($parameters.ToolbarColor) || statusBarColor;
 var buttonColor = !isLight(toolbarColor) ? '#FFFFFF'
     : (primaryColor && !isLight(primaryColor) ? primaryColor : '#1C1C1E');
 var closeText = ($parameters.CloseButtonText || 'Đóng').replace(/[,=]/g, ' ');
+// Same height as the app header: given, or measured from a CSS class, or OutSystems UI --header-size.
+var toolbarHeight = Math.round($parameters.ToolbarHeight > 0 ? $parameters.ToolbarHeight
+    : classHeight($parameters.ToolbarHeightClass) ||
+        toPx(getComputedStyle(document.documentElement).getPropertyValue('--header-size')));
 
 var common = 'toolbarcolor=' + toolbarColor +
+    (toolbarHeight > 0 ? ',toolbarheight=' + toolbarHeight : '') +
     ',statusbarcolor=' + statusBarColor +
     ',statusbarstyle=' + (isLight(statusBarColor) ? 'darkcontent' : 'lightcontent') +
     ',closebuttoncolor=' + buttonColor +
     ',navigationbuttoncolor=' + buttonColor +
     ',closebuttoncaption=' + closeText +
+    ($parameters.CloseButtonIcon ? ',closebuttonicon=yes' : '') +
     ',hidenavigationbuttons=yes';
 
 var options = cordova.platformId === 'android'
