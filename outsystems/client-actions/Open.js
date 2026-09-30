@@ -10,9 +10,9 @@
 //          StatusBarColor (Text) - any CSS color. Empty = the app primary color (--color-primary).
 //          ToolbarColor (Text)   - any CSS color. Empty = same as the status bar.
 //          ToolbarHeight (Integer, default 0) - in CSS px, which are dp on Android and pt on iOS.
-//                                  0 = measured from ToolbarHeightClass, else the app header height
+//                                  0 = the height declared for ToolbarHeightClass, else the app header height
 //                                  (--header-size), else the plugin default.
-//          ToolbarHeightClass (Text) - CSS class to take the height from, e.g. "header-top".
+//          ToolbarHeightClass (Text) - CSS class whose declared height to use, e.g. "header-top".
 //          AuthToken (Text)      - JWT handed to the web on MiniAppBridge.getToken().
 //                                  Empty = asked for through OnTokenRequest on the first getToken().
 // Output:  IsOpened (Boolean)
@@ -64,24 +64,41 @@ function toPx(length) {
     return px;
 }
 
-// Height in px of the first rendered element with these CSS classes ("header-top", ".a.b").
-// When none is on screen, of a hidden probe element with them, which works for rules that do
-// not depend on a parent. Returns 0 when the classes are empty, invalid or have no height.
+// The height declared for these CSS classes in the app stylesheets, in px: "header-top" reads
+// `.header-top { height: var(--header-size) }`. Only rules whose selector is exactly the classes
+// count (also inside a selector list); the last one wins, and rules in a @media that does not
+// match are skipped. Returns 0 when the classes are empty or invalid, or no such rule sets a height.
 function classHeight(classes) {
     var names = (classes || '').split(/[\s.]+/).filter(Boolean);
     if (names.length === 0 || !names.every(function (n) { return /^[\w-]+$/.test(n); })) return 0;
-    var elements = document.querySelectorAll('.' + names.join('.'));
-    for (var i = 0; i < elements.length; i++) {
-        var height = elements[i].getBoundingClientRect().height;
-        if (height > 0) return height;
+    var selector = '.' + names.join('.');
+    var height = '';
+
+    function scan(rules) {
+        for (var i = 0; i < rules.length; i++) {
+            var rule = rules[i];
+            if (rule.media && !window.matchMedia(rule.media.mediaText).matches) continue;
+            if (rule.selectorText && rule.style.height &&
+                    rule.selectorText.split(',').some(function (s) { return s.trim() === selector; })) {
+                height = rule.style.height;
+            }
+            if (rule.styleSheet) scanSheet(rule.styleSheet); // @import
+            if (rule.cssRules) scan(rule.cssRules); // @media, @supports, @layer
+        }
     }
-    var probe = document.createElement('div');
-    probe.className = names.join(' ');
-    probe.style.visibility = 'hidden';
-    document.body.appendChild(probe);
-    var probeHeight = probe.getBoundingClientRect().height;
-    document.body.removeChild(probe);
-    return probeHeight;
+
+    function scanSheet(sheet) {
+        try {
+            if (!sheet.disabled) scan(sheet.cssRules);
+        } catch (e) {
+            // Stylesheet from another origin: its rules cannot be read.
+        }
+    }
+
+    for (var i = 0; i < document.styleSheets.length; i++) {
+        scanSheet(document.styleSheets[i]);
+    }
+    return toPx(height);
 }
 
 // True when white text and icons get less than 3:1 contrast on this color (WCAG minimum for
@@ -124,7 +141,7 @@ var toolbarColor = toHex($parameters.ToolbarColor) || statusBarColor;
 var buttonColor = !isLight(toolbarColor) ? '#FFFFFF'
     : (primaryColor && !isLight(primaryColor) ? primaryColor : '#1C1C1E');
 var closeText = ($parameters.CloseButtonText || 'Đóng').replace(/[,=]/g, ' ');
-// Same height as the app header: given, or measured from a CSS class, or OutSystems UI --header-size.
+// Same height as the app header: given, or declared for a CSS class, or OutSystems UI --header-size.
 var toolbarHeight = Math.round($parameters.ToolbarHeight > 0 ? $parameters.ToolbarHeight
     : classHeight($parameters.ToolbarHeightClass) ||
         toPx(getComputedStyle(document.documentElement).getPropertyValue('--header-size')));

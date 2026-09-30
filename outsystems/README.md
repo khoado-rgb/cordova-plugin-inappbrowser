@@ -70,7 +70,11 @@ Mỗi action chỉ gồm một JavaScript node. Copy code từ file tương ứn
 - `StatusBarColor`: màu CSS bất kỳ, ví dụ `#1068EB`, `rgb(16,104,235)` hay `red`. Để trống thì dùng màu primary của app.
 - `ToolbarColor`: màu CSS bất kỳ. Để trống thì dùng màu của status bar. Truyền `"#FFFFFF"` nếu muốn toolbar trắng. Khi đó nút Đóng dùng màu primary.
 - `ToolbarHeight`: chiều cao toolbar, tính bằng CSS px. Trong app OutSystems, 1 CSS px bằng 1dp trên Android và 1pt trên iOS, nên cứ truyền đúng chiều cao header của app là khớp. Để `0` thì wrapper lấy chiều cao theo thứ tự: đo từ `ToolbarHeightClass`, rồi biến `--header-size` của theme OutSystems UI (mặc định `56px`, không gồm status bar), rồi chiều cao mặc định của plugin. Trên iOS nên để từ 44 trở lên, vì thấp hơn thì nút có thể tràn ra ngoài toolbar.
-- `ToolbarHeightClass`: tên class CSS để lấy chiều cao, ví dụ `header-top` (có hay không có dấu `.` đều được, nhiều class thì cách nhau bằng dấu cách). Wrapper đo phần tử đầu tiên có class đó đang hiển thị trên screen. Nếu screen không có phần tử nào như vậy, wrapper tạo tạm một phần tử ẩn có class đó để đo; cách này chỉ đúng khi rule CSS của class không phụ thuộc phần tử cha. Với OutSystems UI, dùng `header-top` chứ **không dùng `header`**, vì `.header` có thêm padding bằng chiều cao status bar.
+- `ToolbarHeightClass`: tên class CSS để đọc giá trị `height` được khai báo cho class đó trong stylesheet của app, ví dụ `header-top` (có hay không có dấu `.` đều được, nhiều class thì cách nhau bằng dấu cách). Wrapper chỉ đọc giá trị `height`, không đo cả khối phần tử, nên padding và border không bị cộng vào. Giá trị `var(...)`, `rem` hay `calc()` được quy đổi ra px.
+  - Chỉ tính rule có selector **đúng bằng** class, kể cả khi nằm trong danh sách selector (`.a, .header-top`). Rule có selector lồng như `.layout .header-top` không được tính.
+  - Nếu có nhiều rule như vậy thì rule khai báo sau cùng được dùng. Rule trong `@media` không khớp với máy thì bị bỏ qua. Rule trong `@import` và `@supports` vẫn được đọc.
+  - Không tìm thấy rule nào, hoặc rule không khai báo `height`, thì wrapper chuyển sang `--header-size`.
+  - Với OutSystems UI, dùng `header-top` (khai báo `height: var(--header-size)`). Class `header` không khai báo height.
 - `AuthToken`: JWT giao cho web khi web gọi `MiniAppBridge.getToken()`. Để trống thì app chỉ lấy token khi web cần, qua event `OnTokenRequest` (xem mục 3).
 
 `MiniApp_SetToken` lưu token mới và trả lời các lần gọi `getToken()` đang chờ. Truyền `Token` rỗng nghĩa là không lấy được token, khi đó các lần gọi đang chờ bị reject. Output `Success` là False nếu không có mini app nào đang mở.
@@ -166,7 +170,7 @@ Màu:
 - [ ] iOS: vùng status bar và toolbar cùng màu primary của app. Với primary đậm, chữ status bar và nút Đóng màu trắng.
 - [ ] iOS với primary sáng (thử `StatusBarColor: "#FFD600"`): chữ status bar và nút Đóng màu tối.
 - [ ] Chiều cao toolbar bằng chiều cao header của app (mặc định 56). Thử thêm `ToolbarHeight: 64`: nút Đóng vẫn nằm giữa theo chiều dọc.
-- [ ] `ToolbarHeightClass: "header-top"` trên một screen có header: toolbar cao bằng phần header dưới status bar.
+- [ ] `ToolbarHeightClass: "header-top"`: toolbar cao bằng phần header dưới status bar (56 với theme mặc định).
 - [ ] `CloseButtonIcon: True`: iOS và Android hiện icon X đúng màu, bấm vào thì đóng mini app. Bật VoiceOver/TalkBack: nút được đọc là "Đóng".
 - [ ] iOS: nếu chữ status bar không đổi màu, kiểm tra `Info.plist` của app. Nếu `UIViewControllerBasedStatusBarAppearance` là `NO`, iOS bỏ qua style riêng của InAppBrowser và dùng style chung của app.
 - [ ] Android 14 trở xuống: status bar màu primary, icon status bar đúng màu (trắng hoặc tối).
