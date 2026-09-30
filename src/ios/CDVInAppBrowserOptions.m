@@ -45,6 +45,8 @@
         self.toolbarcolor = nil;
         self.toolbartranslucent = YES;
         self.beforeload = @"";
+        self.statusbarcolor = nil;
+        self.statusbarstyle = nil;
     }
 
     return self;

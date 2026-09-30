@@ -21,7 +21,7 @@
 -->
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
            id="cordova-plugin-inappbrowser"
-      version="7.0.1-dev.0">
+      version="7.0.1-os.1">
 
     <name>InAppBrowser</name>
     <description>Cordova InAppBrowser Plugin</description>
@@ -32,7 +32,7 @@
 
     <engines>
         <engine name="cordova" version=">=9.0.0"/>
-        <engine name="cordova-android" version=">=9.0.0" />
+        <engine name="cordova-android" version=">=10.0.0" />
         <engine name="cordova-ios" version=">=6.2.0" />
     </engines>
 

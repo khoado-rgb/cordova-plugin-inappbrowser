@@ -20,6 +20,16 @@
 -->
 # Release Notes
 
+## 7.0.1-os.1
+
+Fork of `master` (7.0.1-dev) for OutSystems MABS builds. See `outsystems/README.md`.
+
+* feat: `statusbarcolor` and `statusbarstyle` open options (iOS, Android) to color the status bar per browser; `statusbarstyle` takes precedence over the `InAppBrowserStatusBarStyle` preference
+* fix(ios): paint the status bar backdrop with the top toolbar color, or the system background when the toolbar is not at the top
+* fix(android): keep the toolbar, web view and keyboard clear of the system bars on Android 15+ (targetSdk 35), where the dialog is drawn edge-to-edge
+* chore(android): require cordova-android >= 10.0.0
+* feat(outsystems): wrapper snippets, partner bridge script and guide; the status bar and toolbar follow the app primary color; JWT hand-over with `MiniAppBridge.getToken()`, `MiniApp_SetToken` and `OnTokenRequest`
+
 ## 7.0.0
 
 **Breaking Changes:**

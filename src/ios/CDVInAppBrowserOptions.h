@@ -46,6 +46,10 @@
 @property (nonatomic, assign) BOOL disallowoverscroll;
 @property (nonatomic, copy) NSString *beforeload;
 
+// OutSystems fork: status bar backdrop color (#RRGGBB) and text style (lightcontent, darkcontent, default)
+@property (nonatomic, copy) NSString *statusbarcolor;
+@property (nonatomic, copy) NSString *statusbarstyle;
+
 + (CDVInAppBrowserOptions *)parseOptions:(NSString *)options;
 
 @end

@@ -23,6 +23,8 @@ const nodeTestConfig = require('@cordova/eslint-config/node-tests');
 const browserConfig = require('@cordova/eslint-config/browser-tests');
 
 module.exports = defineConfig([
+    // OutSystems JavaScript node snippets, not standalone scripts (top-level return, $parameters)
+    { ignores: ['outsystems/**'] },
     ...browserConfig.map(config => ({
         ...config,
         languageOptions: {

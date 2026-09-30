@@ -852,13 +852,40 @@ BOOL isExiting = NO;
     
     // Get toolbar background color by options or set default which is white
     UIColor *toolbarBackgroundColor = _browserOptions.toolbarcolor ? [self colorFromHexString:_browserOptions.toolbarcolor] : UIColor.whiteColor;
-    
+
+    // Paint the status bar backdrop, which is not covered by any subview.
+    // With a top toolbar it matches the (opaque) toolbar color, otherwise it follows
+    // the system light/dark background, same as the status bar text does by default.
+    BOOL toolbarAtTop = _browserOptions.toolbar && [_browserOptions.toolbarposition isEqualToString:kInAppBrowserToolbarBarPositionTop];
+    if (toolbarAtTop) {
+        self.view.backgroundColor = toolbarBackgroundColor;
+    } else if (@available(iOS 13.0, *)) {
+        self.view.backgroundColor = UIColor.systemBackgroundColor;
+    } else {
+        self.view.backgroundColor = UIColor.whiteColor;
+    }
+
+    // An explicit statusbarcolor gets its own backdrop view, limited to the area above the
+    // safe area, so it never shows through at the bottom (home indicator) edge.
+    if (_browserOptions.statusbarcolor) {
+        UIView *statusBarBackground = [UIView new];
+        statusBarBackground.translatesAutoresizingMaskIntoConstraints = NO;
+        statusBarBackground.backgroundColor = [self colorFromHexString:_browserOptions.statusbarcolor];
+        [self.view addSubview:statusBarBackground];
+        [NSLayoutConstraint activateConstraints:@[
+            [statusBarBackground.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+            [statusBarBackground.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+            [statusBarBackground.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+            [statusBarBackground.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor]
+        ]];
+    }
+
     // Make toolbar semi-transparent by options, default is YES
     if (_browserOptions.toolbartranslucent) {
         // On iOS 18 and older, use a semi-transparent color
         toolbarBackgroundColor = [toolbarBackgroundColor colorWithAlphaComponent:0.6];
     }
-    
+
     self.toolbarBackground.backgroundColor = toolbarBackgroundColor;
     [self.view addSubview:self.toolbarBackground];
     
@@ -1172,7 +1199,8 @@ BOOL isExiting = NO;
 
 - (UIStatusBarStyle)preferredStatusBarStyle
 {
-    NSString *statusBarStylePreference = [_settings cordovaSettingForKey:@"InAppBrowserStatusBarStyle"];
+    // The statusbarstyle open option (per browser) takes precedence over the app-wide preference.
+    NSString *statusBarStylePreference = _browserOptions.statusbarstyle ?: [_settings cordovaSettingForKey:@"InAppBrowserStatusBarStyle"];
     if (statusBarStylePreference && [statusBarStylePreference isEqualToString:@"lightcontent"]) {
         return UIStatusBarStyleLightContent;
     } else if (statusBarStylePreference && [statusBarStylePreference isEqualToString:@"darkcontent"]) {

@@ -41,7 +41,10 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.WindowManager.LayoutParams;
 import android.view.inputmethod.EditorInfo;
@@ -121,10 +124,13 @@ public class InAppBrowser extends CordovaPlugin {
     private static final String FOOTER_COLOR = "footercolor";
     private static final String BEFORELOAD = "beforeload";
     private static final String FULLSCREEN = "fullscreen";
+    // OutSystems fork: status bar color (#RRGGBB) and icon style (lightcontent, darkcontent)
+    private static final String STATUS_BAR_COLOR = "statusbarcolor";
+    private static final String STATUS_BAR_STYLE = "statusbarstyle";
 
     private static final int TOOLBAR_HEIGHT = 48;
 
-    private static final List customizableOptions = Arrays.asList(CLOSE_BUTTON_CAPTION, TOOLBAR_COLOR, NAVIGATION_COLOR, CLOSE_BUTTON_COLOR, FOOTER_COLOR);
+    private static final List customizableOptions = Arrays.asList(CLOSE_BUTTON_CAPTION, TOOLBAR_COLOR, NAVIGATION_COLOR, CLOSE_BUTTON_COLOR, FOOTER_COLOR, STATUS_BAR_COLOR, STATUS_BAR_STYLE);
 
     private InAppBrowserDialog dialog;
     private WebView inAppWebView;
@@ -153,6 +159,8 @@ public class InAppBrowser extends CordovaPlugin {
     private String footerColor = "";
     private String beforeload = "";
     private boolean fullscreen = true;
+    private Integer statusBarColor = null;
+    private String statusBarStyle = "";
     private String[] allowedSchemes;
     private InAppBrowserClient currentClient;
 
@@ -640,6 +648,8 @@ public class InAppBrowser extends CordovaPlugin {
         showZoomControls = true;
         openWindowHidden = false;
         mediaPlaybackRequiresUserGesture = false;
+        statusBarColor = null;
+        statusBarStyle = "";
 
         if (features != null) {
             String show = features.get(LOCATION);
@@ -724,6 +734,18 @@ public class InAppBrowser extends CordovaPlugin {
             String fullscreenSet = features.get(FULLSCREEN);
             if (fullscreenSet != null) {
                 fullscreen = fullscreenSet.equals("yes") ? true : false;
+            }
+            String statusBarColorSet = features.get(STATUS_BAR_COLOR);
+            if (statusBarColorSet != null) {
+                try {
+                    statusBarColor = Color.parseColor(statusBarColorSet);
+                } catch (IllegalArgumentException e) {
+                    LOG.e(LOG_TAG, "Invalid statusbarcolor: " + statusBarColorSet);
+                }
+            }
+            String statusBarStyleSet = features.get(STATUS_BAR_STYLE);
+            if (statusBarStyleSet != null) {
+                statusBarStyle = statusBarStyleSet;
             }
         }
 
@@ -818,6 +840,38 @@ public class InAppBrowser extends CordovaPlugin {
                 return _close;
             }
 
+            /**
+             * OutSystems fork: colors the status bar of the dialog window and sets its icon style.
+             *
+             * Up to Android 14 the window draws the status bar background itself. From Android 15
+             * (targetSdk 35) the dialog is drawn edge-to-edge, setStatusBarColor has no effect and
+             * the status bar spacer (sized from the insets in run()) shows through instead.
+             */
+            @SuppressLint("NewApi")
+            private void styleStatusBar(Window window) {
+                if (statusBarColor != null) {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
+                    window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+                    window.setStatusBarColor(statusBarColor);
+                }
+                if (statusBarStyle.isEmpty()) {
+                    return;
+                }
+                // Same values as iOS: darkcontent = dark icons, for a light status bar color.
+                boolean darkIcons = statusBarStyle.equals("darkcontent");
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    window.getInsetsController().setSystemBarsAppearance(
+                            darkIcons ? WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS : 0,
+                            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    View decor = window.getDecorView();
+                    int flags = decor.getSystemUiVisibility();
+                    decor.setSystemUiVisibility(darkIcons
+                            ? flags | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                            : flags & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+                }
+            }
+
             @SuppressLint("NewApi")
             public void run() {
 
@@ -839,6 +893,38 @@ public class InAppBrowser extends CordovaPlugin {
                 // Main container layout
                 LinearLayout main = new LinearLayout(cordova.getActivity());
                 main.setOrientation(LinearLayout.VERTICAL);
+
+                // OutSystems fork: status bar backdrop. Its height stays 0 until the window hands the
+                // system bar insets to the content, which only happens edge-to-edge (Android 15+).
+                final View statusBarSpacer = new View(cordova.getActivity());
+                statusBarSpacer.setBackgroundColor(statusBarColor != null ? statusBarColor
+                        : (getShowLocationBar() ? toolbarColor : Color.BLACK));
+                statusBarSpacer.setLayoutParams(new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0));
+                main.addView(statusBarSpacer);
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    // Edge-to-edge, the window neither fits the system bars nor resizes for the keyboard:
+                    // keep the toolbar below the status bar, and the web view above the navigation bar
+                    // and the keyboard. Up to Android 14 the window consumes these insets itself (all 0 here).
+                    dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+                    // Shows behind the navigation bar, like the legacy black navigation bar.
+                    main.setBackgroundColor(Color.BLACK);
+                    main.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+                        @Override
+                        public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
+                            android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                            android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
+                            ViewGroup.LayoutParams spacerParams = statusBarSpacer.getLayoutParams();
+                            if (spacerParams.height != bars.top) {
+                                spacerParams.height = bars.top;
+                                statusBarSpacer.setLayoutParams(spacerParams);
+                            }
+                            v.setPadding(bars.left, 0, bars.right, Math.max(bars.bottom, ime.bottom));
+                            // Consumed, so the web view does not report them again as CSS safe-area insets.
+                            return WindowInsets.CONSUMED;
+                        }
+                    });
+                }
 
                 // Toolbar layout
                 RelativeLayout toolbar = new RelativeLayout(cordova.getActivity());
@@ -1172,6 +1258,7 @@ public class InAppBrowser extends CordovaPlugin {
 
                 if (dialog != null) {
                     dialog.setContentView(main);
+                    styleStatusBar(dialog.getWindow());
                     dialog.show();
                     dialog.getWindow().setAttributes(lp);
                 }
