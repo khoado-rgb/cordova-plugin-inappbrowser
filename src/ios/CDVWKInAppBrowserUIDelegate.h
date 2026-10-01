@@ -31,7 +31,9 @@
 - (instancetype)initWithTitle:(NSString *)title;
 - (void)setViewController:(UIViewController *)viewController;
 
-// Origins (scheme://host[:port]) of a "|" separated list of URLs; invalid entries are dropped.
+// Origins (https://host[:port]) of a "|" separated list of URLs; invalid and non-https entries are dropped.
 + (NSArray<NSString *> *)originsFromList:(NSString *)list;
+// scheme://host[:port] of a frame, like window.location.origin; "" when it has none.
++ (NSString *)originOf:(WKSecurityOrigin *)origin;
 
 @end

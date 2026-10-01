@@ -44,6 +44,7 @@ import android.os.Message;
 import android.graphics.Typeface;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -78,6 +79,11 @@ import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 
+import androidx.webkit.JavaScriptReplyProxy;
+import androidx.webkit.WebMessageCompat;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
+
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.Config;
 import org.apache.cordova.CordovaArgs;
@@ -95,6 +101,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -102,6 +109,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.StringTokenizer;
+import java.util.WeakHashMap;
 
 @SuppressLint("SetJavaScriptEnabled")
 public class InAppBrowser extends CordovaPlugin {
@@ -150,10 +158,17 @@ public class InAppBrowser extends CordovaPlugin {
     private static final String PERMISSION_ORIGINS = "permissionorigins";
     // OutSystems fork: title on the left of the toolbar, in the place of the hidden URL bar
     private static final String TOOLBAR_TITLE = "toolbartitle";
+    // OutSystems fork: size of the close button X (closebuttonicon) or of its caption, in dp/sp
+    private static final String CLOSE_BUTTON_SIZE = "closebuttonsize";
+    // OutSystems fork: the page itself may only load over https; http navigations of the main frame are blocked
+    private static final String HTTPS_ONLY = "httpsonly";
 
     private static final int TOOLBAR_HEIGHT = 48;
+    private static final float MIN_CLOSE_BUTTON_SIZE = 8;
+    private static final float MAX_CLOSE_BUTTON_SIZE = 40;
+    private static final int MAX_POPUP_WEBVIEWS = 3;
 
-    private static final List customizableOptions = Arrays.asList(CLOSE_BUTTON_CAPTION, TOOLBAR_COLOR, NAVIGATION_COLOR, CLOSE_BUTTON_COLOR, FOOTER_COLOR, STATUS_BAR_COLOR, STATUS_BAR_STYLE, TOOLBAR_HEIGHT_OPTION, PERMISSION_ORIGINS, TOOLBAR_TITLE);
+    private static final List customizableOptions = Arrays.asList(CLOSE_BUTTON_CAPTION, TOOLBAR_COLOR, NAVIGATION_COLOR, CLOSE_BUTTON_COLOR, FOOTER_COLOR, STATUS_BAR_COLOR, STATUS_BAR_STYLE, TOOLBAR_HEIGHT_OPTION, PERMISSION_ORIGINS, TOOLBAR_TITLE, CLOSE_BUTTON_SIZE);
 
     private InAppBrowserDialog dialog;
     private WebView inAppWebView;
@@ -187,6 +202,7 @@ public class InAppBrowser extends CordovaPlugin {
     private boolean closeButtonIcon = false;
     private int toolbarHeight = TOOLBAR_HEIGHT;
     private String toolbarTitle = "";
+    private float closeButtonSize = 0;
     private String[] permissionOrigins = null;
     // "<origin> <resource>" pairs the user allowed while this browser is open
     private final Set<String> allowedPermissions = new HashSet<String>();
@@ -195,6 +211,8 @@ public class InAppBrowser extends CordovaPlugin {
     private AlertDialog permissionDialog;
     // Transport WebViews created for window.open, destroyed once they are no longer needed
     private final List<WebView> popupWebViews = new ArrayList<WebView>();
+    private final Set<WebView> destroyedWebViews = Collections.newSetFromMap(new WeakHashMap<WebView, Boolean>());
+    private boolean httpsOnly = false;
     private String[] allowedSchemes;
     private InAppBrowserClient currentClient;
 
@@ -627,7 +645,7 @@ public class InAppBrowser extends CordovaPlugin {
      * may be called from one of the WebView's own callbacks.
      */
     private void destroyWebView(final WebView webView) {
-        if (webView == null) {
+        if (webView == null || !destroyedWebViews.add(webView)) {
             return;
         }
         if (inAppWebView == webView) {
@@ -990,7 +1008,9 @@ public class InAppBrowser extends CordovaPlugin {
         closeButtonIcon = false;
         toolbarHeight = TOOLBAR_HEIGHT;
         toolbarTitle = "";
+        closeButtonSize = 0;
         permissionOrigins = null;
+        httpsOnly = false;
         allowedPermissions.clear();
         pendingPermissions.clear();
         dismissPermissionDialog();
@@ -1103,22 +1123,35 @@ public class InAppBrowser extends CordovaPlugin {
                     LOG.e(LOG_TAG, "Invalid toolbarheight: " + toolbarHeightSet);
                 }
             }
+            String closeButtonSizeSet = features.get(CLOSE_BUTTON_SIZE);
+            if (closeButtonSizeSet != null) {
+                try {
+                    float size = Float.parseFloat(closeButtonSizeSet);
+                    // 0 or less keeps the default; NaN and infinity are dropped.
+                    if (size > 0 && !Float.isInfinite(size)) {
+                        closeButtonSize = Math.min(Math.max(size, MIN_CLOSE_BUTTON_SIZE), MAX_CLOSE_BUTTON_SIZE);
+                    }
+                } catch (NumberFormatException e) {
+                    LOG.e(LOG_TAG, "Invalid closebuttonsize: " + closeButtonSizeSet);
+                }
+            }
             String toolbarTitleSet = features.get(TOOLBAR_TITLE);
             if (toolbarTitleSet != null) {
                 toolbarTitle = toolbarTitleSet.trim();
             }
             String permissionOriginsSet = features.get(PERMISSION_ORIGINS);
             if (permissionOriginsSet != null) {
-                // Invalid entries are dropped, so a list with none left denies every origin.
+                // Invalid and non-https entries are dropped, so a list with none left denies every origin.
                 List<String> origins = new ArrayList<String>();
                 for (String entry : permissionOriginsSet.split("\\|")) {
                     String origin = originOf(Uri.parse(entry.trim()));
-                    if (!origin.isEmpty()) {
+                    if (origin.startsWith("https://")) {
                         origins.add(origin);
                     }
                 }
                 permissionOrigins = origins.toArray(new String[0]);
             }
+            httpsOnly = "yes".equals(features.get(HTTPS_ONLY));
         }
 
         final CordovaWebView thatWebView = this.webView;
@@ -1177,7 +1210,7 @@ public class InAppBrowser extends CordovaPlugin {
                     // Use TextView for text
                     TextView close = new TextView(cordova.getActivity());
                     close.setText(closeButtonCaption);
-                    close.setTextSize(20);
+                    close.setTextSize(closeButtonSize > 0 ? closeButtonSize : 20);
                     if (closeButtonColor != "") close.setTextColor(android.graphics.Color.parseColor(closeButtonColor));
                     close.setGravity(android.view.Gravity.CENTER_VERTICAL);
                     // OutSystems fork: the caption ends 16dp from the edge, with the toolbar's 2dp padding,
@@ -1199,7 +1232,8 @@ public class InAppBrowser extends CordovaPlugin {
                     Drawable closeIcon = activityRes.getDrawable(closeResId);
                     if (closeButtonColor != "") close.setColorFilter(android.graphics.Color.parseColor(closeButtonColor));
                     close.setImageDrawable(closeIcon);
-                    close.setScaleType(closeButtonIcon ? ImageView.ScaleType.CENTER : ImageView.ScaleType.FIT_CENTER);
+                    // FIT_CENTER also scales the 18dp X to closebuttonsize, as wide as the view leaves it.
+                    close.setScaleType(ImageView.ScaleType.FIT_CENTER);
                     close.getAdjustViewBounds();
 
                     _close = close;
@@ -1211,14 +1245,20 @@ public class InAppBrowser extends CordovaPlugin {
                 _close.setLayoutParams(closeLayoutParams);
                 _close.setBackground(null);
                 if (closeButtonIcon) {
-                    // OutSystems fork: the glyph ends 16dp from the edge, like the title on the other side:
-                    // 2dp toolbar padding, 1dp margin, then 13dp padding each side of the 18dp glyph for a
-                    // 44dp wide touch area.
-                    _close.setPadding(this.dpToPixels(13), 0, this.dpToPixels(13), 0);
+                    // OutSystems fork: the X (18dp, or closebuttonsize) ends 16dp from the edge, like the
+                    // title on the other side: 2dp toolbar padding, a margin, then padding on each side of
+                    // the glyph for a touch area of at least 44dp, as far as the 14dp left to the edge allows.
+                    DisplayMetrics metrics = cordova.getActivity().getResources().getDisplayMetrics();
+                    float glyph = closeButtonSize > 0 ? closeButtonSize : 18;
+                    float sidePadding = Math.min(Math.max(0, (44 - glyph) / 2), 14);
+                    int sidePaddingPx = Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, sidePadding, metrics));
+                    _close.setPadding(sidePaddingPx, 0, sidePaddingPx, 0);
+                    closeLayoutParams.width = Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, glyph + 2 * sidePadding, metrics));
+                    int edgeMargin = Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 14 - sidePadding, metrics));
                     if (leftToRight) {
-                        closeLayoutParams.leftMargin = this.dpToPixels(1);
+                        closeLayoutParams.leftMargin = edgeMargin;
                     } else {
-                        closeLayoutParams.rightMargin = this.dpToPixels(1);
+                        closeLayoutParams.rightMargin = edgeMargin;
                     }
                 }
 
@@ -1544,6 +1584,9 @@ public class InAppBrowser extends CordovaPlugin {
                                 // OutSystems fork: the navigation leaves the transport WebView,
                                 // which is no longer needed.
                                 destroyPopupWebView(popup);
+                                if (blockInsecure(targetUrl)) {
+                                    return true;
+                                }
 
                                 // Reuse the main client so beforeload and scheme routing are
                                 // applied exactly like regular navigations.
@@ -1563,8 +1606,12 @@ public class InAppBrowser extends CordovaPlugin {
                         // to the active InAppBrowser WebView/client above.
                         final WebView newWebView = new WebView(view.getContext());
                         newWebView.setWebViewClient(webViewClient);
-                        // OutSystems fork: tracked so it is destroyed, at the latest when the browser closes.
+                        // OutSystems fork: tracked so it is destroyed, at the latest when the browser
+                        // closes. A page that keeps opening blank windows only keeps the last few.
                         popupWebViews.add(newWebView);
+                        while (popupWebViews.size() > MAX_POPUP_WEBVIEWS) {
+                            destroyPopupWebView(popupWebViews.get(0));
+                        }
 
                         final WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
                         transport.setWebView(newWebView);
@@ -1635,19 +1682,33 @@ public class InAppBrowser extends CordovaPlugin {
                 class JsObject {
                     @JavascriptInterface
                     public void postMessage(String data) {
-                        try {
-                            JSONObject obj = new JSONObject();
-                            obj.put("type", MESSAGE_EVENT);
-                            obj.put("data", new JSONObject(data));
-                            sendUpdate(obj, true);
-                        } catch (JSONException ex) {
-                            LOG.e(LOG_TAG, "data object passed to postMessage has caused a JSON error.");
-                        }
+                        sendMessageEvent(data, null);
                     }
                 }
 
                 settings.setMediaPlaybackRequiresUserGesture(mediaPlaybackRequiresUserGesture);
-                inAppWebView.addJavascriptInterface(new JsObject(), "cordova_iab");
+                // OutSystems fork: with a WebMessageListener only the main frame may talk to the app,
+                // not its iframes (ads, analytics), and each message carries the origin of the page
+                // that sent it. WebViews without it fall back to the JavascriptInterface.
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+                    WebViewCompat.addWebMessageListener(inAppWebView, "cordova_iab", Collections.singleton("*"),
+                        new WebViewCompat.WebMessageListener() {
+                            @Override
+                            public void onPostMessage(WebView view, WebMessageCompat message, Uri sourceOrigin,
+                                                      boolean isMainFrame, JavaScriptReplyProxy replyProxy) {
+                                if (!isMainFrame) {
+                                    return;
+                                }
+                                try {
+                                    sendMessageEvent(message.getData(), originOf(sourceOrigin));
+                                } catch (IllegalStateException e) {
+                                    LOG.e(LOG_TAG, "postMessage only takes a JSON string.");
+                                }
+                            }
+                        });
+                } else {
+                    inAppWebView.addJavascriptInterface(new JsObject(), "cordova_iab");
+                }
 
                 String overrideUserAgent = preferences.getString("OverrideUserAgent", null);
                 String appendUserAgent = preferences.getString("AppendUserAgent", null);
@@ -1734,6 +1795,46 @@ public class InAppBrowser extends CordovaPlugin {
     }
 
     /**
+     * OutSystems fork: a postMessage from the page, with the origin of the page that sent it when
+     * the WebView reports one.
+     */
+    private void sendMessageEvent(String data, String origin) {
+        try {
+            JSONObject obj = new JSONObject();
+            obj.put("type", MESSAGE_EVENT);
+            obj.put("data", new JSONObject(data));
+            if (origin != null) {
+                obj.put("origin", origin);
+            }
+            sendUpdate(obj, true);
+        } catch (JSONException | NullPointerException ex) {
+            LOG.e(LOG_TAG, "data object passed to postMessage has caused a JSON error.");
+        }
+    }
+
+    /**
+     * OutSystems fork: with httpsonly, true for an http URL, which is then reported as a loaderror
+     * and must not load.
+     */
+    private boolean blockInsecure(String url) {
+        if (!httpsOnly || url == null || !url.regionMatches(true, 0, "http:", 0, 5)) {
+            return false;
+        }
+        LOG.e(LOG_TAG, "httpsonly: blocked an http page");
+        try {
+            JSONObject obj = new JSONObject();
+            obj.put("type", LOAD_ERROR_EVENT);
+            obj.put("url", url);
+            obj.put("code", -1);
+            obj.put("message", "Only https pages may load (httpsonly)");
+            sendUpdate(obj, true, PluginResult.Status.ERROR);
+        } catch (JSONException ex) {
+            LOG.d(LOG_TAG, "Should never happen");
+        }
+        return true;
+    }
+
+    /**
      * Create a new plugin success result and send it back to JavaScript
      *
      * @param obj a JSONObject contain event payload information
@@ -1811,6 +1912,8 @@ public class InAppBrowser extends CordovaPlugin {
         @SuppressWarnings("deprecation")
         @Override
         public boolean shouldOverrideUrlLoading(WebView webView, String url) {
+            // OutSystems fork: no httpsonly check here, as this callback does not tell iframes from
+            // the page; onPageStarted stops an http page instead.
             return shouldOverrideUrlLoading(url, null);
         }
 
@@ -1826,6 +1929,10 @@ public class InAppBrowser extends CordovaPlugin {
         @TargetApi(Build.VERSION_CODES.N)
         @Override
         public boolean shouldOverrideUrlLoading(WebView webView, WebResourceRequest request) {
+            // OutSystems fork: httpsonly applies to the page itself, iframes are left to the page.
+            if (request.isForMainFrame() && blockInsecure(request.getUrl().toString())) {
+                return true;
+            }
             return shouldOverrideUrlLoading(request.getUrl().toString(), request.getMethod());
         }
 
@@ -2000,6 +2107,13 @@ public class InAppBrowser extends CordovaPlugin {
         @Override
         public void onPageStarted(WebView view, String url, Bitmap favicon) {
             super.onPageStarted(view, url, favicon);
+            // OutSystems fork: httpsonly, for what shouldOverrideUrlLoading does not see (POST, back,
+            // reload, and before Android 7 any navigation).
+            if (blockInsecure(url)) {
+                view.stopLoading();
+                view.loadUrl("about:blank");
+                return;
+            }
             String newloc = "";
             if (url.startsWith("http:") || url.startsWith("https:") || url.startsWith("file:")) {
                 newloc = url;

@@ -40,6 +40,7 @@ typedef NSDictionary CDVSettingsDictionary;
     @private
     NSString *_beforeload;
     BOOL _waitForBeforeload;
+    BOOL _httpsOnly;
 }
 
 @property (nonatomic, retain) CDVWKInAppBrowserViewController *inAppBrowserViewController;
@@ -90,6 +91,7 @@ typedef NSDictionary CDVSettingsDictionary;
 - (void)showLocationBar:(BOOL)show;
 - (void)showToolBar:(BOOL)show atPosition:(NSString *)toolbarPosition;
 - (void)setCloseButtonTitle:(NSString *)title withColor:(NSString *)colorString asIcon:(BOOL)asIcon atIndex:(int)buttonIndex;
+- (void)layoutToolbarTitleBesideCloseButton:(UIView *)button onTheRight:(BOOL)closeOnTheRight;
 - (id)initWithBrowserOptions:(CDVInAppBrowserOptions *)browserOptions andSettings:(CDVSettingsDictionary *)settings;
 
 @end

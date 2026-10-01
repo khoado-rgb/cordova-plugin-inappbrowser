@@ -4,7 +4,7 @@ Bản fork của [apache/cordova-plugin-inappbrowser](https://github.com/apache/
 
 ## Các thay đổi so với bản gốc
 
-Bản hiện tại: `7.0.1-os.5`. Chi tiết từng bản ở [RELEASENOTES.md](../RELEASENOTES.md).
+Bản hiện tại: `7.0.1-os.6`. Chi tiết từng bản ở [RELEASENOTES.md](../RELEASENOTES.md).
 
 ### Option mới của `cordova.InAppBrowser.open`
 
@@ -13,9 +13,11 @@ Bản hiện tại: `7.0.1-os.5`. Chi tiết từng bản ở [RELEASENOTES.md](
 | `statusbarcolor=#RRGGBB` | iOS, Android | Màu nền vùng status bar. |
 | `statusbarstyle=lightcontent\|darkcontent` | iOS, Android | Màu chữ và icon status bar. Trên iOS, option này được ưu tiên hơn preference `InAppBrowserStatusBarStyle`. |
 | `closebuttonicon=yes` | iOS, Android | Nút Đóng là icon X 18pt/dp, trắng đục, dùng chung trên hai nền tảng và tô theo `closebuttoncolor`. Chữ X cách mép 16pt/dp, vùng bấm 44pt/dp. `closebuttoncaption` khi đó chỉ là nhãn cho VoiceOver/TalkBack. |
+| `closebuttonsize=<số>` | iOS, Android | Kích thước chữ X (khi `closebuttonicon=yes`) tính bằng pt/dp, hoặc cỡ chữ của caption (pt trên iOS, sp trên Android). Giá trị được giữ trong khoảng 8–40; `0` hoặc giá trị sai thì dùng mặc định. Mặc định: X 18, chữ 17 (iOS) và 20 (Android). Chữ X vẫn cách mép 16pt/dp. |
 | `toolbarheight=<số>` | iOS, Android | Chiều cao toolbar, tính bằng dp trên Android và pt trên iOS, không gồm safe area. Trên iOS, toolbar không thấp hơn chiều cao thật của thanh. |
 | `toolbartitle=<chữ>` | iOS, Android | Title trên toolbar, ở phía không có nút Đóng (với wrapper là bên trái), cách mép 16pt/dp. Cỡ 17, chữ đậm vừa, cùng màu nút Đóng, bị cắt bằng "…" nếu quá dài. Trên Android chỉ hiện khi thanh URL bị ẩn (`hideurlbar=yes`). |
-| `permissionorigins=<origin>\|<origin>` | iOS, Android | Các origin được xin quyền camera, micro và vị trí. Không truyền thì mọi origin đều được xin, nhưng luôn phải được user đồng ý. |
+| `permissionorigins=<origin>\|<origin>` | iOS, Android | Các origin HTTPS được xin quyền camera, micro và vị trí. Mục không phải HTTPS bị bỏ, nên nếu không còn mục nào thì mọi trang đều bị từ chối. Không truyền thì mọi origin đều được xin, nhưng luôn phải được user đồng ý. |
+| `httpsonly=yes` | iOS, Android | Chặn trang chính điều hướng sang `http:` (link, redirect, `window.open`) và báo `loaderror` mã `-1`. Iframe không bị ảnh hưởng. Android không huỷ được lần submit form, back hay reload sang `http:` (Android 6 trở xuống: mọi lần điều hướng sang `http:`), nên dừng trang lại và hiện trang trắng. |
 
 Wrapper OutSystems tự truyền các option này. Khi gọi plugin trực tiếp thì truyền tay.
 
@@ -35,7 +37,8 @@ Wrapper OutSystems tự truyền các option này. Khi gọi plugin trực tiế
   - Chỉ camera, micro và vị trí được cấp. Protected media và MIDI luôn bị từ chối.
   - `InAppChromeClient` mặc định từ chối.
 - **Nút Đóng:** với `closebuttonicon=yes`, nút dùng icon X 18dp trắng đục, có vùng bấm 44dp. Chữ X, hoặc chữ caption khi không dùng icon, cách mép 16dp, bằng khoảng cách của title. Icon gốc của bản gốc là `#333` với alpha 60%, nên khi tô trắng chỉ ra màu trắng nhạt.
-- **Bộ nhớ:** WebView được destroy khi đóng và khi mở lại mini app. WebView tạm của `window.open` được destroy ngay sau khi điều hướng đã chuyển về WebView chính. Bản gốc giữ chúng tới khi GC chạy.
+- **Message từ web:** khi WebView hỗ trợ `WebMessageListener` (hầu hết máy hiện nay), plugin nhận message qua listener này thay cho `JavascriptInterface`. Khi đó chỉ trang chính gửi được message, iframe thì không, và mỗi message kèm `origin` thật của trang gửi. WebView cũ không hỗ trợ thì plugin vẫn dùng `JavascriptInterface` như bản gốc, message không kèm `origin`. Plugin cần thư viện `androidx.webkit`, đã có sẵn trong cordova-android 10 trở lên.
+- **Bộ nhớ:** WebView được destroy khi đóng và khi mở lại mini app. WebView tạm của `window.open` được destroy ngay sau khi điều hướng đã chuyển về WebView chính, và chỉ giữ tối đa 3 cái (trang mở liên tục cửa sổ trống thì cái cũ nhất bị destroy). Bản gốc giữ chúng tới khi GC chạy.
 - **Đóng nhầm mini app mới mở:** ở bản gốc, nếu trang `about:blank` (tải lúc đóng) xong muộn, nó có thể đóng nhầm mini app vừa được mở lại. Lỗi này đã được sửa.
 - Plugin yêu cầu cordova-android ≥ 10.0.0, vì code dùng API 30 (`WindowInsets.Type`).
 
@@ -52,20 +55,21 @@ Wrapper OutSystems tự truyền các option này. Khi gọi plugin trực tiế
 - **Option dạng chuỗi** (caption, màu, ...) luôn được giữ là chuỗi. Ở bản gốc, `closebuttoncaption=1` hay `closebuttoncaption=No` làm app crash, vì giá trị bị đọc thành số hoặc Boolean. Cũng nhờ vậy `beforeload=no` giờ được hiểu đúng là tắt.
 - **Quyền camera và micro (iOS 15 trở lên):** chỉ được xin khi trang thuộc `permissionorigins`, sau đó WebKit tự hỏi user. Với quyền vị trí, và với iOS dưới 15, không có API để lọc theo origin, nên WebKit hỏi user như bình thường.
 - **Message và log:**
-  - Chỉ nhận message từ trang chính, bỏ qua message từ iframe.
+  - Chỉ nhận message từ trang chính, bỏ qua message từ iframe. Mỗi message kèm `origin` của trang gửi.
   - Không ghi script hay kết quả của `executeScript` vào log, vì script giao token có chứa JWT.
   - Message handler được gỡ đúng cách khi đóng.
 
 ### Wrapper OutSystems (`outsystems/`)
 
 - **Màu:** lúc mở mini app, status bar và toolbar lấy màu primary của app (biến CSS `--color-primary` của OutSystems UI). Chữ và icon status bar, cùng nút Đóng, dùng màu trắng nếu đạt độ tương phản ít nhất 3:1, không thì dùng màu tối. Nếu app không khai báo `--color-primary`, màu theo chế độ Sáng/Tối của máy.
-- **Chiều cao toolbar:** chọn theo thứ tự `ToolbarHeight`, rồi `ToolbarHeightClass`, rồi `--header-size`.
-  - `ToolbarHeight` nhận số hoặc chuỗi (`56`, `"56px"`, `"3.5rem"`), tối thiểu là 44.
-  - `ToolbarHeightClass` đọc giá trị `height` được khai báo cho class trong CSS.
+- **Chiều cao toolbar:** lấy từ `ToolbarHeight`, không có thì lấy `--header-size`. `ToolbarHeight` nhận số, độ dài CSS hoặc biến CSS (`56`, `"56px"`, `"3.5rem"`, `"var(--header-size)"`), hoặc tên class có dấu chấm (`".header-top"`) để đọc giá trị `height` khai báo cho class đó. Tối thiểu là 44.
 - **Nút Đóng:** nằm bên phải trên cả hai nền tảng. `CloseButtonIcon` để dùng icon X thay cho chữ.
 - **Title:** input `Title` hiện chữ ở bên trái toolbar.
 - **JWT:** web lấy token bằng `MiniAppBridge.getToken()`. App trả token qua `AuthToken`, hoặc qua `OnTokenRequest` và `MiniApp_SetToken`. Origin của trang được kiểm tra ngay lúc giao token.
-- **HTTPS:** `Url` và `AllowedOrigins` bắt buộc là HTTPS. `AllowedOrigins` được quy về origin, và cũng là danh sách origin được xin quyền thiết bị.
+- **HTTPS:** `Url` và `AllowedOrigins` bắt buộc là HTTPS. `AllowedOrigins` được quy về origin, và cũng là danh sách origin được xin quyền thiết bị. Wrapper truyền `httpsonly=yes`, nên trang chính không chuyển sang được trang `http:`.
+- **Kiểm tra người gửi:** message được nhận khi origin của trang gửi (plugin gửi kèm) nằm trong `AllowedOrigins`. Chỉ khi WebView Android cũ không gửi kèm origin thì wrapper mới dùng URL vừa tải gần nhất như trước.
+- **URL trong event:** `OnLoaded` và `OnError` nhận URL đã bỏ phần `#...`, và giá trị của các tham số giống thông tin đăng nhập (`code`, `token`, `access_token`, `id_token`, `password`, ...) được thay bằng `hidden`, để app có ghi log cũng không lộ token.
+- **Android:** wrapper truyền thêm `shouldPauseOnSuspend=yes`, để WebView tạm dừng (animation, vị trí) khi app chạy nền.
 
 ### Đã kiểm tra
 
@@ -83,7 +87,17 @@ Wrapper OutSystems tự truyền các option này. Khi gọi plugin trực tiế
   - title cách mép trái 15.6dp, chữ X cách mép phải 15.6dp (16dp sau khi làm tròn pixel), chữ X 18dp màu `#FFFFFF`;
   - với nền vàng thì icon status bar màu tối;
   - bấm nút X thì mini app đóng, và app nhận event `closed`.
-- **Chưa test:** thao tác bấm nút Đóng trên simulator iOS, và Android 15 trở xuống.
+- `CloseButtonSize` (bản `os.6`) đã chạy trên simulator iOS 26.2 và emulator Android 16:
+  - icon cỡ 24 cho chữ X 24pt/dp, icon cỡ 12 cho chữ X 12pt/dp, cả hai đều cách mép 16;
+  - chữ cỡ 15 cho chữ "Đóng" nhỏ hơn mặc định, vẫn sát mép.
+- Các sửa đổi bảo mật của bản `os.6` đã chạy trên simulator iOS 18.0, iOS 26.2 và emulator Android 16 (WebView 133), với trang `https://example.com` được nạp `miniapp-bridge.js`:
+  - message từ trang chính tới app kèm `origin` `https://example.com`; message từ iframe bị bỏ (iframe có handler, nhưng message không tới app);
+  - `getToken()` nhận đúng `AuthToken`;
+  - link `http://example.com/?code=secret#frag` bị chặn, trang giữ nguyên, `OnError` nhận URL `http://example.com/?code=hidden`;
+  - `OnLoaded` của `https://example.com/?code=abc&x=1#f` nhận `https://example.com/?code=hidden&x=1`;
+  - `closebuttonsize=100` cho chữ X 40pt/dp, `closebuttonsize=8` cho chữ X 8pt/dp, cả hai vẫn cách mép phải 16.
+  - bridge gọi sớm: script inline (lúc trang còn `loading`) và handler `DOMContentLoaded` gửi được message, trước khi trang tải xong, và `getToken()` gọi lúc đó vẫn nhận đúng token.
+- **Chưa test:** thao tác bấm nút Đóng trên simulator iOS; Android 15 trở xuống (trong đó có `httpsonly` trên Android 6 trở xuống); WebView Android cũ không có `WebMessageListener` (đường dự phòng `JavascriptInterface`).
 
 ## 1. Publish plugin
 
@@ -91,11 +105,11 @@ Plugin được publish từ repo [khoado-rgb/cordova-plugin-inappbrowser](https
 
 ```sh
 git push origin master
-git tag 7.0.1-os.5
-git push origin 7.0.1-os.5
+git tag 7.0.1-os.6
+git push origin 7.0.1-os.6
 ```
 
-MABS lấy plugin theo tag, nên mỗi lần sửa plugin phải tạo tag mới (`7.0.1-os.6`, ...) và cập nhật URL trong Extensibility Configurations. Không sửa lại một tag đã dùng để build.
+MABS lấy plugin theo tag, nên mỗi lần sửa plugin phải tạo tag mới (`7.0.1-os.7`, ...) và cập nhật URL trong Extensibility Configurations. Không sửa lại một tag đã dùng để build.
 
 Nếu repo để private, MABS phải có quyền đọc repo. Khi đó dùng URL có token, hoặc để repo public.
 
@@ -106,7 +120,7 @@ Nếu repo để private, MABS phải có quyền đọc repo. Khi đó dùng UR
 ```json
 {
   "plugin": {
-    "url": "https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.5"
+    "url": "https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.6"
   }
 }
 ```
@@ -121,7 +135,7 @@ Mỗi action chỉ gồm một JavaScript node. Copy code từ file tương ứn
 | Action | Input | Output | Code |
 |---|---|---|---|
 | `MiniApp_IsAvailable` | – | `IsAvailable` (Boolean) | [client-actions/CheckPlugin.js](client-actions/CheckPlugin.js) |
-| `MiniApp_Open` | `Url` (Text, bắt buộc, HTTPS), `AllowedOrigins` (Text), `AllowedTypes` (Text), `Title` (Text), `CloseButtonText` (Text, mặc định `"Đóng"`), `CloseButtonIcon` (Boolean, mặc định `False`), `StatusBarColor` (Text), `ToolbarColor` (Text), `ToolbarHeight` (Integer hoặc Text), `ToolbarHeightClass` (Text), `AuthToken` (Text) | `IsOpened` (Boolean) | [client-actions/Open.js](client-actions/Open.js) |
+| `MiniApp_Open` | `Url` (Text, bắt buộc, HTTPS), `AllowedOrigins` (Text), `AllowedTypes` (Text), `Title` (Text), `CloseButtonText` (Text, mặc định `"Đóng"`), `CloseButtonIcon` (Boolean, mặc định `False`), `CloseButtonSize` (Integer hoặc Text), `StatusBarColor` (Text), `ToolbarColor` (Text), `ToolbarHeight` (Integer hoặc Text), `AuthToken` (Text) | `IsOpened` (Boolean) | [client-actions/Open.js](client-actions/Open.js) |
 | `MiniApp_Close` | – | – | [client-actions/Close.js](client-actions/Close.js) |
 | `MiniApp_PostToWeb` | `Type` (Text, bắt buộc), `PayloadJson` (Text, mặc định `"{}"`) | `Success` (Boolean) | [client-actions/PostToWeb.js](client-actions/PostToWeb.js) |
 | `MiniApp_SetToken` | `Token` (Text) | `Success` (Boolean) | [client-actions/SetToken.js](client-actions/SetToken.js) |
@@ -141,14 +155,21 @@ Mỗi action chỉ gồm một JavaScript node. Copy code từ file tương ứn
 - `CloseButtonText`: không được chứa dấu phẩy.
 - Nút Đóng nằm **bên phải** toolbar trên cả iOS và Android. Wrapper tự truyền `lefttoright=yes` cho iOS; Android mặc định đã đặt nút bên phải.
 - `CloseButtonIcon`: `True` thì nút Đóng là icon X, cùng màu với chữ khi không dùng icon. Cả iOS và Android dùng chung một icon (khung 32pt/dp, chữ X 18pt/dp), nên nút có cùng kích thước trên hai nền tảng. Trên iOS 26, nút không có nền kính dạng viên thuốc. `CloseButtonText` khi đó không hiện ra mà chỉ là nhãn cho trình đọc màn hình, nên vẫn nên để "Đóng".
+- `CloseButtonSize`: kích thước chữ X (khi `CloseButtonIcon = True`) hoặc cỡ chữ của `CloseButtonText`, tính bằng CSS px (bằng pt trên iOS, dp trên Android). Nhận số hoặc chuỗi (`24`, `"24px"`). Giá trị được giới hạn trong khoảng 8 đến 40 để vừa toolbar. Để trống hoặc `0` thì dùng mặc định: chữ X cỡ 18, chữ cỡ 17 trên iOS và 20 trên Android. Chữ X luôn cách mép 16, và vùng bấm rộng ít nhất 44 khi khoảng tới mép cho phép.
 - `StatusBarColor`: màu CSS bất kỳ, ví dụ `#1068EB`, `rgb(16,104,235)` hay `red`. Để trống thì dùng màu primary của app.
 - `ToolbarColor`: màu CSS bất kỳ. Để trống thì dùng màu của status bar. Truyền `"#FFFFFF"` nếu muốn toolbar trắng. Khi đó nút Đóng dùng màu primary.
-- `ToolbarHeight`: chiều cao toolbar, tính bằng CSS px. Trong app OutSystems, 1 CSS px bằng 1dp trên Android và 1pt trên iOS, nên cứ truyền đúng chiều cao header của app là khớp. Input này nhận được Integer (`56`) hoặc Text (`"56"`, `"56px"`, `"3.5rem"`). Giá trị nhỏ hơn **44** được nâng lên 44, vì các nút của toolbar iOS cần tối thiểu 44pt; thấp hơn thì nút tràn lên status bar, còn trên Android chữ bị cắt. Để trống hoặc `0` thì wrapper lấy chiều cao theo thứ tự: giá trị `height` khai báo cho `ToolbarHeightClass`, rồi biến `--header-size` của theme OutSystems UI (mặc định `56px`, không gồm status bar), rồi chiều cao mặc định của plugin.
-- `ToolbarHeightClass`: tên class CSS để đọc giá trị `height` được khai báo cho class đó trong stylesheet của app, ví dụ `header-top` (có hay không có dấu `.` đều được, nhiều class thì cách nhau bằng dấu cách). Wrapper chỉ đọc giá trị `height`, không đo cả khối phần tử, nên padding và border không bị cộng vào. Giá trị `var(...)`, `rem` hay `calc()` được quy đổi ra px.
-  - Chỉ tính rule có selector **đúng bằng** class, kể cả khi nằm trong danh sách selector (`.a, .header-top`). Rule có selector lồng như `.layout .header-top` không được tính.
-  - Nếu có nhiều rule như vậy thì rule khai báo sau cùng được dùng. Rule trong `@media` không khớp với máy thì bị bỏ qua. Rule trong `@import` và `@supports` vẫn được đọc.
-  - Không tìm thấy rule nào, hoặc rule không khai báo `height`, thì wrapper chuyển sang `--header-size`.
-  - Với OutSystems UI, dùng `header-top` (khai báo `height: var(--header-size)`). Class `header` không khai báo height.
+- `ToolbarHeight`: chiều cao toolbar, tính bằng CSS px. Trong app OutSystems, 1 CSS px bằng 1dp trên Android và 1pt trên iOS, nên cứ truyền đúng chiều cao header của app là khớp. Input nhận một trong các dạng sau:
+  - Số hoặc độ dài CSS: `56`, `"56"`, `"56px"`, `"3.5rem"`, `"calc(...)"`.
+  - Biến CSS: `"var(--header-size)"`.
+  - Tên class, **viết có dấu chấm ở đầu**: `".header-top"`. Wrapper đọc giá trị `height` được khai báo cho class đó trong stylesheet của app, không đo cả khối phần tử, nên padding và border không bị cộng vào. Nhiều class thì viết liền nhau, ví dụ `".a.b"`.
+    - Chỉ tính rule có selector **đúng bằng** class, kể cả khi nằm trong danh sách selector (`.a, .header-top`). Rule có selector lồng như `.layout .header-top` không được tính.
+    - Nếu có nhiều rule như vậy thì rule khai báo sau cùng được dùng. Rule trong `@media` không khớp với máy thì bị bỏ qua. Rule trong `@import` và `@supports` vẫn được đọc.
+    - Với OutSystems UI, dùng `".header-top"` (class này khai báo `height: var(--header-size)`). Class `header` không khai báo height.
+  - Để trống, `0`, hoặc giá trị không đọc được (kể cả class không có rule nào): wrapper dùng biến `--header-size` của theme OutSystems UI (mặc định `56px`, không gồm status bar). Nếu theme không có biến này, plugin dùng chiều cao mặc định.
+
+  Giá trị nhỏ hơn **44** được nâng lên 44, vì các nút của toolbar iOS cần tối thiểu 44pt; thấp hơn thì nút tràn lên status bar, còn trên Android chữ bị cắt.
+
+  Input `ToolbarHeightClass` của các bản trước đã được gộp vào đây. Nếu đang truyền `ToolbarHeightClass: "header-top"`, hãy đổi thành `ToolbarHeight: ".header-top"` và xoá input cũ.
 - `AuthToken`: JWT giao cho web khi web gọi `MiniAppBridge.getToken()`. Để trống thì app chỉ lấy token khi web cần, qua event `OnTokenRequest` (xem mục 3).
 
 `MiniApp_SetToken` lưu token mới và trả lời các lần gọi `getToken()` đang chờ. Truyền `Token` rỗng nghĩa là không lấy được token, khi đó các lần gọi đang chờ bị reject. Output `Success` là False nếu không có mini app nào đang mở.
@@ -158,7 +179,7 @@ Mỗi action chỉ gồm một JavaScript node. Copy code từ file tương ứn
 Block này nhận kết quả từ mini app và đẩy lên screen chứa nó qua các event.
 
 - **Events** (Is Mandatory = No):
-  - `OnLoaded(Url: Text)`
+  - `OnLoaded(Url: Text)`: URL không có `#...`, và các tham số giống token bị thay bằng `hidden`.
   - `OnMessage(Type: Text, PayloadJson: Text)`
   - `OnTokenRequest()`
   - `OnClosed()`
@@ -198,9 +219,10 @@ Nhúng [partner/miniapp-bridge.js](partner/miniapp-bridge.js) vào mọi trang c
 ```js
 if (MiniAppBridge.isInApp()) {
   MiniAppBridge.send('openPayment', { orderId: 'A123', amount: 150000 });
-  MiniAppBridge.onMessage(function (msg) {
+  var stopListening = MiniAppBridge.onMessage(function (msg) {
     if (msg.type === 'paymentDone') { /* cập nhật UI, rồi xác nhận lại với backend */ }
   });
+  // Khi không cần nữa (ví dụ rời màn hình trong SPA): stopListening(), hoặc MiniAppBridge.offMessage(fn).
 }
 // Kết thúc mini app:
 MiniAppBridge.close({ result: 'success' });
@@ -221,7 +243,9 @@ login(false).then(function (res) {
 });
 ```
 
-`getToken()` trả về Promise. Promise bị reject nếu app không có token, nếu trang không chạy trong app, hoặc nếu quá 30 giây không có trả lời.
+`getToken()` trả về Promise. Promise bị reject nếu app không có token, nếu trang không chạy trong app, nếu quá 30 giây không có trả lời, hoặc nếu đã có 20 lần gọi đang chờ.
+
+Message phải được gửi từ trang chính. Message gửi từ iframe bị bỏ qua (trên Android cần WebView hỗ trợ `WebMessageListener`).
 
 Danh sách `type` và format `payload` phải được hai bên thống nhất trước, và phải khớp với `AllowedTypes` phía app. Không dùng các type dành riêng cho nghiệp vụ: `close`, `getToken` (web gửi app) và `token` (app gửi web).
 
@@ -229,11 +253,11 @@ Danh sách `type` và format `payload` phải được hai bên thống nhất t
 
 - **Không dùng `clearcache` hay `clearsessioncache`.** InAppBrowser dùng chung kho cookie với WebView của app. Xoá cookie ở đây sẽ làm app OutSystems mất phiên đăng nhập.
 - Vì dùng chung cookie, **session của đối tác vẫn còn sau khi user logout khỏi app.** Khi logout, phải huỷ session phía đối tác, qua API server-to-server hoặc URL logout của họ.
-- Coi mọi message từ web là input không tin cậy. Trên iOS, message từ iframe bị bỏ qua. Trên Android, iframe trong trang vẫn gửi được message, vì `JavascriptInterface` không cho biết frame gửi. Với thanh toán và kết quả giao dịch, luôn xác nhận qua backend (server của mình gọi server đối tác), không tin số liệu do web gửi lên.
+- Coi mọi message từ web là input không tin cậy. Message từ iframe bị bỏ qua trên iOS, và trên Android khi WebView hỗ trợ `WebMessageListener`. Chỉ với WebView Android cũ, iframe trong trang mới gửi được message. Với thanh toán và kết quả giao dịch, luôn xác nhận qua backend (server của mình gọi server đối tác), không tin số liệu do web gửi lên.
 - **JWT:**
   - Không bao giờ đưa JWT vào URL, vì URL bị lưu trong lịch sử, log server và header `Referer`. Dùng `AuthToken`/`getToken` hoặc SSO bằng code.
   - JWT cho đối tác nên do backend của app phát riêng cho từng đối tác. Token sống ngắn (5–15 phút), `aud` là đối tác, chỉ chứa claim cần thiết, và ký bất đối xứng (RS256/ES256) để đối tác verify bằng public key. Không đưa session token hay refresh token của app.
-  - Token chỉ được giao cho trang chính khi trang đang ở một origin trong `AllowedOrigins`. Origin được kiểm tra ngay trong trang, tại lúc giao. `AllowedOrigins` chỉ nên gồm origin HTTPS chính xác của đối tác. Iframe trong trang vẫn gửi được yêu cầu `getToken`, nhưng token chỉ được giao cho trang chính.
+  - Token chỉ được giao cho trang chính khi trang đang ở một origin trong `AllowedOrigins`. Origin được kiểm tra ngay trong trang, tại lúc giao. `AllowedOrigins` chỉ nên gồm origin HTTPS chính xác của đối tác. Nếu iframe gửi được yêu cầu `getToken` (WebView Android cũ), token vẫn chỉ được giao cho trang chính.
   - Khi trang đối tác đã nhận token, mọi script chạy trong trang đó (analytics, SDK bên thứ ba) đều đọc được token. Vì vậy đối tác nên đổi token lấy session của họ ở backend ngay, và không lưu token vào `localStorage`.
   - Backend đối tác phải kiểm tra chữ ký, `exp`, `aud` và `iss` của token.
 
@@ -244,8 +268,9 @@ Màu:
 - [ ] iOS: vùng status bar và toolbar cùng màu primary của app. Với primary đậm, chữ status bar và nút Đóng màu trắng.
 - [ ] iOS với primary sáng (thử `StatusBarColor: "#FFD600"`): chữ status bar và nút Đóng màu tối.
 - [ ] Chiều cao toolbar bằng chiều cao header của app (mặc định 56). Thử thêm `ToolbarHeight: "64px"`: toolbar cao hơn, nút Đóng vẫn nằm giữa theo chiều dọc. `ToolbarHeight: "20px"` cho ra 44, và trên iOS nút không tràn ra ngoài toolbar.
-- [ ] `ToolbarHeightClass: "header-top"`: toolbar cao bằng phần header dưới status bar (56 với theme mặc định).
+- [ ] `ToolbarHeight: ".header-top"`: toolbar cao bằng phần header dưới status bar (56 với theme mặc định).
 - [ ] Nút Đóng nằm bên phải toolbar trên cả iOS và Android.
+- [ ] `CloseButtonSize: 24` với `CloseButtonIcon: True`: chữ X to hơn (24), vẫn cách mép phải 16 và vẫn bấm được. Thử thêm `CloseButtonSize: 12`, và `CloseButtonSize: 15` với nút chữ.
 - [ ] Chữ X (hoặc chữ "Đóng") cách mép phải 16pt/dp, bằng khoảng title cách mép trái, trên cả iOS và Android. Bấm vào thì đóng mini app.
 - [ ] `Title: "Đối tác ABC"`: title nằm bên trái, cách mép khoảng 16, căn giữa theo chiều dọc với nút Đóng, cùng màu với nút. Title rất dài thì bị cắt bằng "…" và không đè lên nút Đóng.
 - [ ] `CloseButtonIcon: True`: iOS và Android hiện icon X đúng màu và cùng kích thước (trên iOS 26 không có nền kính quanh nút), bấm vào thì đóng mini app. Bật VoiceOver/TalkBack: nút được đọc là "Đóng".
@@ -279,3 +304,6 @@ Hành vi chung:
 - [ ] Sau khi đóng mini app, app OutSystems vẫn giữ phiên đăng nhập.
 - [ ] Mở và đóng mini app 10–20 lần liên tiếp, kể cả luồng có `window.open` như thanh toán: app không chậm dần, không bị kill vì hết bộ nhớ.
 - [ ] `Url` là `http://...`: mini app không mở, `OnError` báo "Url must be an https URL".
+- [ ] Trong mini app, bấm một link `http://...`: trang không chuyển, `OnError` báo "Only https pages may load (httpsonly)".
+- [ ] Trang đối tác có iframe gọi `MiniAppBridge.send(...)`: app không nhận được message (Android: trên máy có WebView mới).
+- [ ] Trang redirect về `https://partner.com/cb?code=abc`: `OnLoaded` nhận `https://partner.com/cb?code=hidden`.

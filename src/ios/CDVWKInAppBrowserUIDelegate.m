@@ -44,11 +44,16 @@ static NSString *CDVWKInAppBrowserOrigin(NSString *scheme, NSString *host, NSInt
         NSString *trimmed = [entry stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
         NSURLComponents *url = [NSURLComponents componentsWithString:trimmed];
         NSString *origin = CDVWKInAppBrowserOrigin(url.scheme, url.host, url.port.integerValue);
-        if (origin.length > 0) {
+        if ([origin hasPrefix:@"https://"]) {
             [origins addObject:origin];
         }
     }
     return origins;
+}
+
++ (NSString *)originOf:(WKSecurityOrigin *)origin
+{
+    return origin == nil ? @"" : CDVWKInAppBrowserOrigin(origin.protocol, origin.host, origin.port);
 }
 
 // OutSystems fork: camera and microphone only for pages on a permissionorigins origin, and

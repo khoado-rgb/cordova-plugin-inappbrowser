@@ -5,17 +5,20 @@
  *   MiniAppBridge.isInApp()                  -> true when running inside the host app
  *   MiniAppBridge.send('openPayment', {...}) -> send a message to the app
  *   MiniAppBridge.close({ result: 'ok' })    -> close the mini app, optionally with a result
- *   MiniAppBridge.onMessage(function (msg) { msg.type, msg.payload })
+ *   MiniAppBridge.onMessage(function (msg) { msg.type, msg.payload }) -> returns a function that removes it
+ *   MiniAppBridge.offMessage(fn)             -> stop receiving messages in fn
  *   MiniAppBridge.getToken()                 -> Promise of the user JWT handed over by the app
  *   MiniAppBridge.getToken({ refresh: true }) -> same, after the backend rejected the last one
  *
- * Only message types agreed with the host app are delivered; anything else is dropped.
+ * Only message types agreed with the host app are delivered; anything else is dropped, and so is
+ * anything sent from an iframe.
  */
 (function (w) {
     var TOKEN_TIMEOUT_MS = 30000;
+    var MAX_PENDING_TOKEN_REQUESTS = 20;
 
     function nativeHandler() {
-        // iOS: WKScriptMessageHandler. Android: JavascriptInterface, available before page load
+        // iOS: WKScriptMessageHandler. Android: the cordova_iab object, available before page load
         // finishes (window.webkit is only aliased on Android after onPageFinished).
         return (w.webkit && w.webkit.messageHandlers && w.webkit.messageHandlers.cordova_iab) || w.cordova_iab || null;
     }
@@ -54,9 +57,18 @@
         },
         onMessage: function (fn) {
             if (typeof fn === 'function') listeners.push(fn);
+            return function () { w.MiniAppBridge.offMessage(fn); };
+        },
+        offMessage: function (fn) {
+            var i = listeners.indexOf(fn);
+            if (i !== -1) listeners.splice(i, 1);
         },
         getToken: function (options) {
             return new Promise(function (resolve, reject) {
+                if (Object.keys(tokenRequests).length >= MAX_PENDING_TOKEN_REQUESTS) {
+                    reject(new Error('MiniAppBridge: too many pending getToken calls'));
+                    return;
+                }
                 var id = 'token-' + Date.now().toString(36) + '-' + (++tokenRequestCount);
                 var timer = setTimeout(function () {
                     delete tokenRequests[id];
@@ -78,7 +90,7 @@
             answerTokenRequest(message.payload || {});
             return;
         }
-        listeners.forEach(function (fn) {
+        listeners.slice().forEach(function (fn) {
             try { fn(message); } catch (e) { if (w.console) console.error(e); }
         });
     };

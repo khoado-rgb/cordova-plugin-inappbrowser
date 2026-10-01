@@ -50,16 +50,17 @@ This repository is a fork of [apache/cordova-plugin-inappbrowser](https://github
 
 Install a tagged release from Git:
 
-    cordova plugin add https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.5
+    cordova plugin add https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.6
 
 Changes from the upstream plugin:
 
-- New `open` options for Android and iOS: `statusbarcolor`, `statusbarstyle`, `closebuttonicon`, `toolbarheight`, `toolbartitle` and `permissionorigins`, described under [cordova.InAppBrowser.open](#cordovainappbrowseropen).
+- New `open` options for Android and iOS: `statusbarcolor`, `statusbarstyle`, `closebuttonicon`, `closebuttonsize`, `toolbarheight`, `toolbartitle`, `permissionorigins` and `httpsonly`, described under [cordova.InAppBrowser.open](#cordovainappbrowseropen).
+- `message` events carry the `origin` of the page that posted the message, and messages from iframes are ignored: always on iOS, and on Android when the WebView supports `WebMessageListener` (otherwise Android keeps the `JavascriptInterface`, without `origin`). The plugin depends on `androidx.webkit`, already part of cordova-android 10+.
 - Android no longer grants the camera, microphone or location to any page. Pages on a `permissionorigins` origin may ask; the user confirms in a dialog, then Android asks for the runtime permission if the app does not have it yet.
 - On iOS 15+ the camera and microphone are limited to `permissionorigins` origins, and WebKit asks the user.
 - Android 15+ (targetSdk 35): the toolbar, web view and keyboard are kept clear of the system bars, as the browser is drawn edge-to-edge.
-- Android destroys the browser WebView, and the WebViews created for `window.open`, as soon as they are no longer needed.
-- iOS ignores script messages from iframes, and no longer logs the script or result of `executeScript`.
+- Android destroys the browser WebView, and the WebViews created for `window.open`, as soon as they are no longer needed, and keeps at most 3 of the latter.
+- iOS no longer logs the script or result of `executeScript`.
 - iOS reports a `loaderror` and reloads once when the web content process is terminated, instead of showing a blank page.
 - iOS keeps text options as text: a number-like or `yes`/`no` `closebuttoncaption` no longer crashes, and `beforeload=no` turns beforeload off.
 - Requires cordova-android 10.0.0 or later.
@@ -135,9 +136,11 @@ instance, or the system browser.
     - __statusbarcolor__: set to a hex color string, for example `#1068EB`, to paint the status bar area. On Android 15+ the plugin paints this area itself, as `setStatusBarColor` has no effect there.
     - __statusbarstyle__: set to `lightcontent` (light text and icons, for dark colors) or `darkcontent` (dark text and icons, for light colors). On iOS it takes precedence over the `InAppBrowserStatusBarStyle` preference.
     - __closebuttonicon__: set to `yes` to show the close button as an 18pt/dp X icon, the same on both platforms and tinted with __closebuttoncolor__. __closebuttoncaption__ then only labels it for VoiceOver and TalkBack. On iOS a caption or icon close button is drawn over the toolbar, 16pt from the edge like the title, with no toolbar margins, vibrancy or glass background.
+    - __closebuttonsize__: size of the X in points/dp when __closebuttonicon__ is `yes`, or of the caption font otherwise (points on iOS, sp on Android), from 8 to 40; `0` or an invalid value keeps the default. Defaults: X 18, caption 17 (iOS) or 20 (Android). The X keeps 16pt/dp from the edge.
     - __toolbarheight__: toolbar height in dp (Android) or points (iOS), without the safe area. On iOS it is never lower than the toolbar's own height. On Android it only has effect if location is set to `yes`.
     - __toolbartitle__: text shown on the toolbar, on the side away from the close button, 16pt/dp from the edge, in the close button color, and truncated when too long. On Android it only shows if __hideurlbar__ is set to `yes`, as it takes the place of the URL bar.
-    - __permissionorigins__: origins whose pages may ask for the camera, microphone and location, separated by `|`, for example `https://a.example.com|https://b.example.com`. Without it, any origin may ask. On Android the user always confirms in a dialog first; on iOS 15+ the camera and microphone are limited to these origins and WebKit asks the user.
+    - __permissionorigins__: https origins whose pages may ask for the camera, microphone and location, separated by `|`, for example `https://a.example.com|https://b.example.com`. Other entries are dropped, so a list with no https origin left denies every page. Without it, any origin may ask. On Android the user always confirms in a dialog first; on iOS 15+ the camera and microphone are limited to these origins and WebKit asks the user.
+    - __httpsonly__: set to `yes` to block `http:` navigations of the page itself, each reported as a `loaderror` with code `-1`; iframes are not affected. Android cannot cancel an http form post, back or reload (on Android 6 and older, any http navigation), so it stops the page and shows a blank one instead.
 
     Android supports these additional options:
 
@@ -387,6 +390,7 @@ function downloadListener(params){
 - __code__: the error code, only in the case of `loaderror`. _(Number)_
 - __message__: the error message, only in the case of `loaderror`. _(String)_
 - __data__: the message contents, only in the case of `message`. A stringified JSON object. _(String)_
+- __origin__: the origin of the page that posted the message, only in the case of `message` and only in the [OutSystems fork](#outsystems-fork): always on iOS, on Android when the WebView supports `WebMessageListener`. An empty string when the page has no origin. _(String)_
 
 ### Supported Platforms
 

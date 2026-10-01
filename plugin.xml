@@ -21,7 +21,7 @@
 -->
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
            id="cordova-plugin-inappbrowser"
-      version="7.0.1-os.5">
+      version="7.0.1-os.6">
 
     <name>InAppBrowser</name>
     <description>Cordova InAppBrowser Plugin</description>
@@ -46,6 +46,10 @@
                 <param name="android-package" value="org.apache.cordova.inappbrowser.InAppBrowser"/>
             </feature>
         </config-file>
+
+        <!-- OutSystems fork: WebMessageListener for postMessage. cordova-android 10+ already ships
+             androidx.webkit (1.4.0 or newer); Gradle keeps the newest version. -->
+        <framework src="androidx.webkit:webkit:1.4.0" />
 
         <source-file src="src/android/InAppBrowser.java" target-dir="src/org/apache/cordova/inappbrowser" />
         <source-file src="src/android/InAppBrowserDialog.java" target-dir="src/org/apache/cordova/inappbrowser" />

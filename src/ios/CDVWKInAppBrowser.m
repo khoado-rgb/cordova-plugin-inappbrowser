@@ -60,6 +60,7 @@ static UIBarButtonSystemItem CDVWKInAppBrowserCloseButtonSystemItem(void)
 {
     _beforeload = @"";
     _waitForBeforeload = NO;
+    _httpsOnly = NO;
 }
 
 - (void)onReset
@@ -185,6 +186,7 @@ static UIBarButtonSystemItem CDVWKInAppBrowserCloseButtonSystemItem(void)
         _beforeload = @"yes";
     }
     _waitForBeforeload = ![_beforeload isEqualToString:@""];
+    _httpsOnly = browserOptions.httpsonly;
 
     __weak CDVWKInAppBrowser *weakSelf = self;
     // Delay the initial navigation until requested clearing operations complete.
@@ -551,6 +553,19 @@ static UIBarButtonSystemItem CDVWKInAppBrowserCloseButtonSystemItem(void)
     NSString *httpMethod = navigationAction.request.HTTPMethod;
     NSString *errorMessage = nil;
 
+    // OutSystems fork: httpsonly applies to the page itself, iframes are left to the page.
+    if (_httpsOnly && isTopLevelNavigation && [url.scheme.lowercaseString isEqualToString:@"http"]) {
+        NSLog(@"httpsonly: blocked an http page");
+        if (self.callbackId != nil) {
+            CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
+                                                          messageAsDictionary:@{@"type":@"loaderror", @"url":url.absoluteString, @"code": @"-1", @"message": @"Only https pages may load (httpsonly)"}];
+            [pluginResult setKeepCallbackAsBool:YES];
+            [self.commandDelegate sendPluginResult:pluginResult callbackId:self.callbackId];
+        }
+        decisionHandler(WKNavigationActionPolicyCancel);
+        return;
+    }
+
     if ([_beforeload isEqualToString:@"post"]) {
         // TODO: Handle POST requests by preserving POST data then remove this condition.
         errorMessage = @"beforeload doesn't yet support POST requests";
@@ -671,6 +686,9 @@ static UIBarButtonSystemItem CDVWKInAppBrowserCloseButtonSystemItem(void)
             NSMutableDictionary *dResult = [NSMutableDictionary new];
             [dResult setValue:@"message" forKey:@"type"];
             [dResult setObject:decodedResult forKey:@"data"];
+            // OutSystems fork: the origin of the page that sent it, so the app can check the
+            // sender without relying on the last loadstop URL.
+            [dResult setObject:[CDVWKInAppBrowserUIDelegate originOf:message.frameInfo.securityOrigin] forKey:@"origin"];
             CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:dResult];
             [pluginResult setKeepCallbackAsBool:YES];
             [self.commandDelegate sendPluginResult:pluginResult callbackId:self.callbackId];
@@ -1064,12 +1082,10 @@ BOOL isExiting = NO;
         ]];
     }
 
-    // OutSystems fork: title on the toolbar, vertically centered on the bar, 16pt from the edge, and
-    // truncated when too long. It keeps clear of the navigation buttons (about 96pt) when shown and
-    // of the system close item (about 56pt), on the sides lefttoright puts them; a caption or icon
-    // close button is placed by setCloseButtonTitle, which then keeps the title 12pt from it.
+    // OutSystems fork: title on the toolbar, vertically centered on the bar and truncated when too
+    // long; layoutToolbarTitleBesideCloseButton places it.
     NSString *toolbarTitle = [_browserOptions.toolbartitle stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
-    if (toolbarTitle.length > 0) {
+    if (toolbarVisible && toolbarTitle.length > 0) {
         UILabel *titleLabel = [UILabel new];
         titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
         titleLabel.text = toolbarTitle;
@@ -1087,19 +1103,10 @@ BOOL isExiting = NO;
         [titleLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
         [self.toolbarBackground addSubview:titleLabel];
 
-        CGFloat closeSpace = 72;
-        CGFloat navigationSpace = _browserOptions.hidenavigationbuttons ? 16 : 104;
-        CGFloat leadingSpace = _browserOptions.lefttoright ? navigationSpace : closeSpace;
-        CGFloat trailingSpace = _browserOptions.lefttoright ? closeSpace : navigationSpace;
-        // setCloseButtonTitle replaces the constraint on the close button side, once the button is known.
         self.toolbarTitleLabel = titleLabel;
-        self.toolbarTitleLeadingConstraint = [titleLabel.leadingAnchor constraintEqualToAnchor:self.toolbarBackground.safeAreaLayoutGuide.leadingAnchor constant:leadingSpace];
-        self.toolbarTitleTrailingConstraint = [titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.toolbarBackground.safeAreaLayoutGuide.trailingAnchor constant:-trailingSpace];
-        [NSLayoutConstraint activateConstraints:@[
-            self.toolbarTitleLeadingConstraint,
-            self.toolbarTitleTrailingConstraint,
-            [titleLabel.centerYAnchor constraintEqualToAnchor:self.toolbar.centerYAnchor]
-        ]];
+        [titleLabel.centerYAnchor constraintEqualToAnchor:self.toolbar.centerYAnchor].active = YES;
+        // setCloseButtonTitle places it again, once the close button is known.
+        [self layoutToolbarTitleBesideCloseButton:nil onTheRight:_browserOptions.lefttoright];
     }
 
     // Address background horizontal constraints with margin
@@ -1229,11 +1236,15 @@ BOOL isExiting = NO;
         self.closeButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:CDVWKInAppBrowserCloseButtonSystemItem() target:self action:@selector(close)];
         self.closeButton.enabled = YES;
         self.closeButton.tintColor = color;
+        [self layoutToolbarTitleBesideCloseButton:nil onTheRight:buttonIndex > 0];
     } else {
         // OutSystems fork: the icon or caption is a button over the toolbar background, not a toolbar
         // item: UIToolbar insets items by its own margins (different per iOS version) and, on iOS 26,
         // draws them with vibrancy on a glass capsule. The glyph or text sits 16pt from the edge, like
         // the title on the other side, in a 44pt tall touch area.
+        // closebuttonsize: the size of the X, or of the caption font, from 8 to 40pt; 0 = default.
+        CGFloat size = _browserOptions.closebuttonsize;
+        size = isfinite(size) && size > 0 ? MIN(MAX(size, 8), 40) : 0;
         UIImage *icon = nil;
         if (asIcon) {
             // An 18pt X (also used on Android); the SF Symbol if the image is missing from the bundle.
@@ -1242,6 +1253,13 @@ BOOL isExiting = NO;
                 if (@available(iOS 13.0, *)) {
                     icon = [UIImage systemImageNamed:@"xmark"];
                 }
+            }
+            if (icon != nil && size > 0) {
+                UIImage *source = icon;
+                UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(size, size)];
+                icon = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+                    [source drawInRect:CGRectMake(0, 0, size, size)];
+                }];
             }
         }
         UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -1253,40 +1271,36 @@ BOOL isExiting = NO;
             button.accessibilityLabel = title ?: NSLocalizedString(@"Close", nil);
         } else {
             [button setTitle:title ?: NSLocalizedString(@"Close", nil) forState:UIControlStateNormal];
-            button.titleLabel.font = [UIFont systemFontOfSize:17];
+            button.titleLabel.font = [UIFont systemFontOfSize:size > 0 ? size : 17];
         }
         [button addTarget:self action:@selector(close) forControlEvents:UIControlEventTouchUpInside];
         [self.toolbarBackground addSubview:button];
 
         // Index 0 is the left end of the toolbar (lefttoright=no), the others the right end.
         BOOL onTheRight = buttonIndex > 0;
-        // The icon is centered in a 44pt wide touch area, 13pt wider than the glyph on each side.
-        CGFloat edgeInset = icon != nil ? 16 - 13 : 16;
+        // The icon is centered in a touch area of at least 44pt, so the glyph edge stays 16pt from the
+        // edge; a glyph under 12pt gets a narrower area that still ends at the edge.
+        CGFloat glyph = icon != nil ? icon.size.width : 0;
+        CGFloat touchSize = MAX(44, glyph);
+        CGFloat edgeInset = icon != nil ? 16 - (touchSize - glyph) / 2 : 16;
+        if (edgeInset < 0) {
+            touchSize = glyph + 32;
+            edgeInset = 0;
+        }
         NSMutableArray<NSLayoutConstraint *> *constraints = [NSMutableArray arrayWithObjects:
             [button.centerYAnchor constraintEqualToAnchor:self.toolbar.centerYAnchor],
-            [button.heightAnchor constraintEqualToConstant:44],
+            [button.heightAnchor constraintEqualToConstant:MAX(44, size)],
             onTheRight
                 ? [button.trailingAnchor constraintEqualToAnchor:self.toolbarBackground.safeAreaLayoutGuide.trailingAnchor constant:-edgeInset]
                 : [button.leadingAnchor constraintEqualToAnchor:self.toolbarBackground.safeAreaLayoutGuide.leadingAnchor constant:edgeInset],
             nil];
         if (icon != nil) {
-            [constraints addObject:[button.widthAnchor constraintEqualToConstant:44]];
+            [constraints addObject:[button.widthAnchor constraintEqualToConstant:touchSize]];
         }
         [NSLayoutConstraint activateConstraints:constraints];
         self.closeOverlayButton = button;
 
-        // The title keeps 12pt from the button, instead of the space reserved for a toolbar item.
-        if (self.toolbarTitleLabel != nil) {
-            if (onTheRight) {
-                self.toolbarTitleTrailingConstraint.active = NO;
-                self.toolbarTitleTrailingConstraint = [self.toolbarTitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:button.leadingAnchor constant:-12];
-                self.toolbarTitleTrailingConstraint.active = YES;
-            } else {
-                self.toolbarTitleLeadingConstraint.active = NO;
-                self.toolbarTitleLeadingConstraint = [self.toolbarTitleLabel.leadingAnchor constraintEqualToAnchor:button.trailingAnchor constant:12];
-                self.toolbarTitleLeadingConstraint.active = YES;
-            }
-        }
+        [self layoutToolbarTitleBesideCloseButton:button onTheRight:onTheRight];
 
         // The toolbar keeps an empty item in place of the button.
         self.closeButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFixedSpace target:nil action:nil];
@@ -1296,6 +1310,32 @@ BOOL isExiting = NO;
     NSMutableArray *items = [self.toolbar.items mutableCopy];
     [items replaceObjectAtIndex:buttonIndex withObject:self.closeButton];
     [self.toolbar setItems:items];
+}
+
+// OutSystems fork: the title is 16pt from the edge on the navigation side, or clear of the navigation
+// buttons (about 96pt) when they are shown. On the close button side it keeps clear of the system item
+// (about 56pt), or 12pt from a caption or icon button.
+- (void)layoutToolbarTitleBesideCloseButton:(UIView *)button onTheRight:(BOOL)closeOnTheRight
+{
+    UILabel *label = self.toolbarTitleLabel;
+    if (label == nil) {
+        return;
+    }
+    UILayoutGuide *safeArea = self.toolbarBackground.safeAreaLayoutGuide;
+    CGFloat closeSpace = 72;
+    CGFloat navigationSpace = _browserOptions.hidenavigationbuttons ? 16 : 104;
+    NSLayoutConstraint *leading = closeOnTheRight || button == nil
+        ? [label.leadingAnchor constraintEqualToAnchor:safeArea.leadingAnchor constant:closeOnTheRight ? navigationSpace : closeSpace]
+        : [label.leadingAnchor constraintEqualToAnchor:button.trailingAnchor constant:12];
+    NSLayoutConstraint *trailing = !closeOnTheRight || button == nil
+        ? [label.trailingAnchor constraintLessThanOrEqualToAnchor:safeArea.trailingAnchor constant:-(closeOnTheRight ? closeSpace : navigationSpace)]
+        : [label.trailingAnchor constraintLessThanOrEqualToAnchor:button.leadingAnchor constant:-12];
+    self.toolbarTitleLeadingConstraint.active = NO;
+    self.toolbarTitleTrailingConstraint.active = NO;
+    self.toolbarTitleLeadingConstraint = leading;
+    self.toolbarTitleTrailingConstraint = trailing;
+    leading.active = YES;
+    trailing.active = YES;
 }
 
 - (void)showLocationBar:(BOOL)show

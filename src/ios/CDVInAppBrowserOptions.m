@@ -52,6 +52,8 @@
         self.toolbarheight = 0;
         self.permissionorigins = nil;
         self.toolbartitle = nil;
+        self.closebuttonsize = 0;
+        self.httpsonly = NO;
     }
 
     return self;

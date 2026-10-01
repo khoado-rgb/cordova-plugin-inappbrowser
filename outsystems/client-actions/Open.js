@@ -10,19 +10,23 @@
 //          CloseButtonText (Text, default "Đóng") - must not contain commas.
 //          CloseButtonIcon (Boolean, default False) - X icon instead of the text; the text then
 //                                  only names the button for VoiceOver/TalkBack.
+//          CloseButtonSize (Integer or Text) - size of the X, or font size of the text, in CSS px
+//                                  (dp/pt): 24 or "24px", kept between 8 and 40. Empty or 0 = default
+//                                  (X 18; text 17 on iOS, 20 on Android).
 //          StatusBarColor (Text) - any CSS color. Empty = the app primary color (--color-primary).
 //          ToolbarColor (Text)   - any CSS color. Empty = same as the status bar.
 //          ToolbarHeight (Integer or Text) - in CSS px, which are dp on Android and pt on iOS:
-//                                  56, "56", "56px" or "3.5rem". At least 44, the height the iOS toolbar
-//                                  buttons need. Empty or 0 = the height declared for ToolbarHeightClass,
-//                                  else the app header height (--header-size), else the plugin default.
-//          ToolbarHeightClass (Text) - CSS class whose declared height to use, e.g. "header-top".
+//                                  56, "56", "56px", "3.5rem", "var(--header-size)", or a CSS class
+//                                  whose declared height to use, with its dot: ".header-top".
+//                                  At least 44, the height the iOS toolbar buttons need.
+//                                  Empty or 0 = the app header height (--header-size), else the plugin default.
 //          AuthToken (Text)      - JWT handed to the web on MiniAppBridge.getToken().
 //                                  Empty = asked for through OnTokenRequest on the first getToken().
 // Output:  IsOpened (Boolean)
 //
 // Results are delivered as DOM events on `document`, picked up by the MiniAppEvents block:
-//   miniapp:loaded       {url}
+//   miniapp:loaded       {url}   - URLs in events have no #fragment, and the values of token-like
+//                                  query parameters (code, token, access_token, ...) are hidden
 //   miniapp:message      {type, payloadJson}
 //   miniapp:tokenrequest {}  - the web needs a (new) token, answer with MiniApp_SetToken
 //   miniapp:closed       {}
@@ -122,6 +126,24 @@ function classHeight(classes) {
     return toPx(height);
 }
 
+// For the events the app may log: no fragment, and the values of query parameters that look like
+// credentials (OAuth code, tokens, passwords, signatures) replaced. The rest of the URL is kept as is.
+var SENSITIVE_PARAM = /token|secret|password|passwd|session|signature|^(code|jwt|sig|otp|key|api_?key|auth)$/i;
+function redact(url) {
+    try {
+        var parsed = new URL(url);
+        parsed.hash = '';
+        var sensitive = [];
+        parsed.searchParams.forEach(function (value, name) {
+            if (SENSITIVE_PARAM.test(name) && sensitive.indexOf(name) === -1) sensitive.push(name);
+        });
+        sensitive.forEach(function (name) { parsed.searchParams.set(name, 'hidden'); });
+        return parsed.href;
+    } catch (e) {
+        return '';
+    }
+}
+
 // True when white text and icons get less than 3:1 contrast on this color (WCAG minimum for
 // icons and large text), so they must be dark. Brand reds and oranges keep white.
 function isLight(hex) {
@@ -182,13 +204,19 @@ var buttonColor = !isLight(toolbarColor) ? '#FFFFFF'
 var closeText = ($parameters.CloseButtonText || 'Đóng').replace(/[,=]/g, ' ');
 // Commas and = separate the options, so they cannot be part of a value.
 var title = ($parameters.Title || '').replace(/[,=]/g, ' ').trim();
-// Same height as the app header: given, or declared for a CSS class, or OutSystems UI --header-size.
-var givenHeight = heightPx($parameters.ToolbarHeight);
+// Same height as the app header: given (a length, or the height declared for a ".class"), or
+// OutSystems UI --header-size.
+var heightText = String($parameters.ToolbarHeight || '').trim();
+var givenHeight = heightText.charAt(0) === '.' ? classHeight(heightText) : heightPx($parameters.ToolbarHeight);
 var toolbarHeight = Math.round(givenHeight > 0 ? givenHeight
-    : classHeight($parameters.ToolbarHeightClass) ||
-        toPx(getComputedStyle(document.documentElement).getPropertyValue('--header-size')));
+    : toPx(getComputedStyle(document.documentElement).getPropertyValue('--header-size')));
 if (toolbarHeight > 0 && toolbarHeight < 44) {
     toolbarHeight = 44;
+}
+// Kept small enough for the toolbar.
+var closeButtonSize = Math.round(heightPx($parameters.CloseButtonSize));
+if (closeButtonSize > 0) {
+    closeButtonSize = Math.min(Math.max(closeButtonSize, 8), 40);
 }
 
 var common = 'toolbarcolor=' + toolbarColor +
@@ -200,7 +228,10 @@ var common = 'toolbarcolor=' + toolbarColor +
     ',closebuttoncaption=' + closeText +
     (title ? ',toolbartitle=' + title : '') +
     ($parameters.CloseButtonIcon ? ',closebuttonicon=yes' : '') +
+    (closeButtonSize > 0 ? ',closebuttonsize=' + closeButtonSize : '') +
     ',permissionorigins=' + allowedOrigins.join('|') +
+    // The page itself stays on https: http navigations of the main frame are blocked.
+    ',httpsonly=yes' +
     ',hidenavigationbuttons=yes';
 
 // The close button goes on the right: the Android default, lefttoright=yes on iOS
@@ -208,7 +239,8 @@ var common = 'toolbarcolor=' + toolbarColor +
 var options = cordova.platformId === 'android'
     // location=yes is required for toolbarcolor; hideurlbar hides the URL but keeps the toolbar.
     // fullscreen=no keeps the app status bar visible (default hides it).
-    ? 'location=yes,hideurlbar=yes,fullscreen=no,zoom=no,hardwareback=yes,' + common
+    // shouldPauseOnSuspend pauses what the WebView can (animations, location) while the app is in the background.
+    ? 'location=yes,hideurlbar=yes,fullscreen=no,zoom=no,hardwareback=yes,shouldPauseOnSuspend=yes,' + common
     : 'location=no,toolbar=yes,toolbarposition=top,toolbartranslucent=no,presentationstyle=fullscreen,lefttoright=yes,' + common;
 
 var ref = cordova.InAppBrowser.open(url, '_blank', options);
@@ -269,15 +301,17 @@ $parameters.IsOpened = true;
 ref.addEventListener('loadstart', function (e) { currentUrl = e.url; });
 ref.addEventListener('loadstop', function (e) {
     currentUrl = e.url;
-    emit('loaded', { url: e.url });
+    emit('loaded', { url: redact(e.url) });
 });
 ref.addEventListener('loaderror', function (e) {
-    emit('error', { message: (e.message || 'loaderror') + ' (' + e.url + ')' });
+    emit('error', { message: (e.message || 'loaderror') + ' (' + redact(e.url) + ')' });
 });
 
 ref.addEventListener('message', function (e) {
-    // Only accept messages while the main frame is on a trusted origin.
-    if (allowedOrigins.indexOf(originOf(currentUrl)) === -1) return;
+    // Only accept messages from a page on a trusted origin. The plugin sends the origin of the page
+    // that posted it (iOS, and Android when the WebView supports WebMessageListener); otherwise the last URL.
+    var sender = typeof e.origin === 'string' ? e.origin : originOf(currentUrl);
+    if (allowedOrigins.indexOf(sender) === -1) return;
 
     var data = e.data || {};
     var type = typeof data.type === 'string' ? data.type : '';

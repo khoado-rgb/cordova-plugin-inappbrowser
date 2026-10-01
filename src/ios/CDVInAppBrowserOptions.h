@@ -57,6 +57,10 @@
 @property (nonatomic, copy) NSString *permissionorigins;
 // OutSystems fork: title on the toolbar, on the side away from the close button
 @property (nonatomic, copy) NSString *toolbartitle;
+// OutSystems fork: size of the close button X (closebuttonicon) or of its caption, in points; 0 = default
+@property (nonatomic, assign) double closebuttonsize;
+// OutSystems fork: the page itself may only load over https; http navigations of the main frame are blocked
+@property (nonatomic, assign) BOOL httpsonly;
 
 + (CDVInAppBrowserOptions *)parseOptions:(NSString *)options;
 

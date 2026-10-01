@@ -20,6 +20,21 @@
 -->
 # Release Notes
 
+## 7.0.1-os.6
+
+* feat: `closebuttonsize` open option (iOS, Android): the size of the close button X (`closebuttonicon=yes`) or of its caption font, in points/dp; the X keeps 16pt/dp from the edge and a touch area of at least 44pt/dp where the edge allows
+* feat(outsystems): `CloseButtonSize` input on `MiniApp_Open` (number or CSS length, kept between 8 and 40)
+* feat(outsystems)!: `ToolbarHeightClass` is merged into `ToolbarHeight`, which now also takes a CSS variable (`var(--header-size)`) or a class with its dot (`.header-top`); pass `ToolbarHeight: ".header-top"` instead of `ToolbarHeightClass: "header-top"`
+* feat: `httpsonly` open option (iOS, Android) blocks `http:` navigations of the page itself and reports them as a `loaderror`
+* feat: `message` events carry the `origin` of the page that posted them. Android takes messages through a `WebMessageListener` when the WebView supports it, so iframes can no longer post to the app (iOS already ignored them); older WebViews keep the `JavascriptInterface`. Adds the `androidx.webkit` dependency, already part of cordova-android 10+
+* fix: `closebuttonsize` is kept between 8 and 40, and NaN or infinity keep the default; on iOS a small X keeps its touch area inside the safe area
+* fix: `permissionorigins` only keeps https origins
+* fix(android): at most 3 WebViews created for `window.open` are kept; a WebView is never destroyed twice
+* fix(ios): the toolbar title is only created when the toolbar is shown, and is placed again when the close button changes back to the system item
+* fix(outsystems): messages are checked against the origin of the page that sent them, not the last URL loaded; `MiniApp_Open` passes `httpsonly=yes`, and `shouldPauseOnSuspend=yes` on Android; URLs in `OnLoaded` and `OnError` have no fragment and hide the values of token-like query parameters
+* feat(outsystems): `MiniAppBridge.offMessage()`, `onMessage()` returns a function that removes the listener, and `getToken()` rejects beyond 20 pending calls
+* chore: `npm audit fix` of dev dependencies
+
 ## 7.0.1-os.5
 
 * feat: `toolbartitle` open option (iOS, Android) shows a title on the toolbar, on the side away from the close button, in the close button color, truncated when too long
