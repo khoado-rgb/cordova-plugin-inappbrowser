@@ -21,7 +21,7 @@
 -->
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
            id="cordova-plugin-inappbrowser"
-      version="7.0.1-os.3">
+      version="7.0.1-os.4">
 
     <name>InAppBrowser</name>
     <description>Cordova InAppBrowser Plugin</description>
@@ -88,6 +88,10 @@
 	    <source-file src="src/ios/CDVWKInAppBrowser.m" />
 	    <header-file src="src/ios/CDVWKInAppBrowserUIDelegate.h" />
 	    <source-file src="src/ios/CDVWKInAppBrowserUIDelegate.m" />
+
+	    <!-- OutSystems fork: the Android close icon, for closebuttonicon=yes -->
+	    <resource-file src="src/ios/res/CDVInAppBrowserClose@2x.png" />
+	    <resource-file src="src/ios/res/CDVInAppBrowserClose@3x.png" />
 
 	    <framework src="CoreGraphics.framework" />
     </platform>

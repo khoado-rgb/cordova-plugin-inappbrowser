@@ -2,7 +2,7 @@
 
 Bản fork của [apache/cordova-plugin-inappbrowser](https://github.com/apache/cordova-plugin-inappbrowser) tại nhánh `master` (7.0.1-dev), dùng để mở website của đối tác như một mini app trong app mobile OutSystems. Kèm theo là code cho module wrapper trong OutSystems và script cho phía đối tác.
 
-Khác biệt so với bản gốc (`7.0.1-os.3`):
+Khác biệt so với bản gốc (`7.0.1-os.4`):
 
 - **Option mới `statusbarcolor` và `statusbarstyle`** (iOS và Android). `statusbarcolor=#RRGGBB` là màu nền vùng status bar. `statusbarstyle=lightcontent|darkcontent` là màu chữ và icon status bar. Option này áp dụng cho từng lần mở và được ưu tiên hơn preference `InAppBrowserStatusBarStyle`.
 - **Option mới `closebuttonicon=yes`** (iOS và Android): nút Đóng là icon X thay cho chữ. Khi đó `closebuttoncaption` chỉ dùng làm nhãn cho VoiceOver/TalkBack. Ở bản gốc, iOS dưới 26 luôn hiện chữ ("Done" hoặc caption).
@@ -29,11 +29,11 @@ Plugin được publish từ repo [khoado-rgb/cordova-plugin-inappbrowser](https
 
 ```sh
 git push origin master
-git tag 7.0.1-os.3
-git push origin 7.0.1-os.3
+git tag 7.0.1-os.4
+git push origin 7.0.1-os.4
 ```
 
-MABS lấy plugin theo tag, nên mỗi lần sửa plugin phải tạo tag mới (`7.0.1-os.4`, ...) và cập nhật URL trong Extensibility Configurations. Không sửa lại một tag đã dùng để build.
+MABS lấy plugin theo tag, nên mỗi lần sửa plugin phải tạo tag mới (`7.0.1-os.5`, ...) và cập nhật URL trong Extensibility Configurations. Không sửa lại một tag đã dùng để build.
 
 Nếu repo để private, MABS phải có quyền đọc repo. Khi đó dùng URL có token, hoặc để repo public.
 
@@ -44,7 +44,7 @@ Nếu repo để private, MABS phải có quyền đọc repo. Khi đó dùng UR
 ```json
 {
   "plugin": {
-    "url": "https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.3"
+    "url": "https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.4"
   }
 }
 ```
@@ -77,7 +77,7 @@ Mỗi action chỉ gồm một JavaScript node. Copy code từ file tương ứn
 - `AllowedTypes`: danh sách `type` mà web được phép gửi, ví dụ `openPayment,share`. Type `close` và `getToken` luôn được chấp nhận. Message có type ngoài danh sách sẽ bị bỏ qua.
 - `CloseButtonText`: không được chứa dấu phẩy.
 - Nút Đóng nằm **bên phải** toolbar trên cả iOS và Android. Wrapper tự truyền `lefttoright=yes` cho iOS; Android mặc định đã đặt nút bên phải.
-- `CloseButtonIcon`: `True` thì nút Đóng là icon X (iOS dùng SF Symbol `xmark`, Android dùng icon có sẵn của plugin), cùng màu với chữ khi không dùng icon. `CloseButtonText` khi đó không hiện ra mà chỉ là nhãn cho trình đọc màn hình, nên vẫn nên để "Đóng".
+- `CloseButtonIcon`: `True` thì nút Đóng là icon X, cùng màu với chữ khi không dùng icon. Cả iOS và Android dùng chung một icon (khung 32pt/dp, chữ X 18pt/dp), nên nút có cùng kích thước trên hai nền tảng. Trên iOS 26, nút không có nền kính dạng viên thuốc. `CloseButtonText` khi đó không hiện ra mà chỉ là nhãn cho trình đọc màn hình, nên vẫn nên để "Đóng".
 - `StatusBarColor`: màu CSS bất kỳ, ví dụ `#1068EB`, `rgb(16,104,235)` hay `red`. Để trống thì dùng màu primary của app.
 - `ToolbarColor`: màu CSS bất kỳ. Để trống thì dùng màu của status bar. Truyền `"#FFFFFF"` nếu muốn toolbar trắng. Khi đó nút Đóng dùng màu primary.
 - `ToolbarHeight`: chiều cao toolbar, tính bằng CSS px. Trong app OutSystems, 1 CSS px bằng 1dp trên Android và 1pt trên iOS, nên cứ truyền đúng chiều cao header của app là khớp. Input này nhận được Integer (`56`) hoặc Text (`"56"`, `"56px"`, `"3.5rem"`). Giá trị nhỏ hơn **44** được nâng lên 44, vì các nút của toolbar iOS cần tối thiểu 44pt; thấp hơn thì nút tràn lên status bar, còn trên Android chữ bị cắt. Để trống hoặc `0` thì wrapper lấy chiều cao theo thứ tự: giá trị `height` khai báo cho `ToolbarHeightClass`, rồi biến `--header-size` của theme OutSystems UI (mặc định `56px`, không gồm status bar), rồi chiều cao mặc định của plugin.
@@ -180,10 +180,10 @@ Màu:
 
 - [ ] iOS: vùng status bar và toolbar cùng màu primary của app. Với primary đậm, chữ status bar và nút Đóng màu trắng.
 - [ ] iOS với primary sáng (thử `StatusBarColor: "#FFD600"`): chữ status bar và nút Đóng màu tối.
-- [ ] Chiều cao toolbar bằng chiều cao header của app (mặc định 56). Thử thêm `ToolbarHeight: "64px"`: toolbar cao hơn, nút Đóng vẫn nằm giữa theo chiều dọc. `ToolbarHeight: "20px"` cho ra 44.
+- [ ] Chiều cao toolbar bằng chiều cao header của app (mặc định 56). Thử thêm `ToolbarHeight: "64px"`: toolbar cao hơn, nút Đóng vẫn nằm giữa theo chiều dọc. `ToolbarHeight: "20px"` cho ra 44, và trên iOS nút không tràn ra ngoài toolbar.
 - [ ] `ToolbarHeightClass: "header-top"`: toolbar cao bằng phần header dưới status bar (56 với theme mặc định).
 - [ ] Nút Đóng nằm bên phải toolbar trên cả iOS và Android.
-- [ ] `CloseButtonIcon: True`: iOS và Android hiện icon X đúng màu, bấm vào thì đóng mini app. Bật VoiceOver/TalkBack: nút được đọc là "Đóng".
+- [ ] `CloseButtonIcon: True`: iOS và Android hiện icon X đúng màu và cùng kích thước (trên iOS 26 không có nền kính quanh nút), bấm vào thì đóng mini app. Bật VoiceOver/TalkBack: nút được đọc là "Đóng".
 - [ ] iOS: nếu chữ status bar không đổi màu, kiểm tra `Info.plist` của app. Nếu `UIViewControllerBasedStatusBarAppearance` là `NO`, iOS bỏ qua style riêng của InAppBrowser và dùng style chung của app.
 - [ ] Android 14 trở xuống: status bar màu primary, icon status bar đúng màu (trắng hoặc tối).
 - [ ] **Android 15 trở lên:** toolbar nằm dưới status bar, vùng status bar màu primary, web không bị thanh điều hướng che.

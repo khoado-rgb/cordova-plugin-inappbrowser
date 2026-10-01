@@ -1039,8 +1039,15 @@ BOOL isExiting = NO;
     if (_browserOptions.toolbarheight > 0) {
         // OutSystems fork: fixed toolbar height, not counting the safe area (home indicator for a
         // bottom toolbar), to match the app header. The bar keeps its own height, centered in it.
+        // A height below the bar's own (44pt, more with the iOS 26 glass buttons) would let the
+        // buttons stick out of the header, so the background then grows to the bar instead:
+        // the requested height is only preferred, the bar height is required.
+        NSLayoutConstraint *requestedHeight = [self.toolbarBackground.safeAreaLayoutGuide.heightAnchor constraintEqualToConstant:_browserOptions.toolbarheight];
+        requestedHeight.priority = UILayoutPriorityRequired - 1;
+        [self.toolbar setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisVertical];
         [NSLayoutConstraint activateConstraints:@[
-            [self.toolbarBackground.safeAreaLayoutGuide.heightAnchor constraintEqualToConstant:_browserOptions.toolbarheight],
+            requestedHeight,
+            [self.toolbarBackground.safeAreaLayoutGuide.heightAnchor constraintGreaterThanOrEqualToAnchor:self.toolbar.heightAnchor],
             [self.toolbar.centerYAnchor constraintEqualToAnchor:self.toolbarBackground.safeAreaLayoutGuide.centerYAnchor],
             [self.toolbar.leadingAnchor constraintEqualToAnchor:self.toolbarBackground.layoutMarginsGuide.leadingAnchor],
             [self.toolbar.trailingAnchor constraintEqualToAnchor:self.toolbarBackground.layoutMarginsGuide.trailingAnchor]
@@ -1175,15 +1182,24 @@ BOOL isExiting = NO;
     // If a custom caption is provided, create a title-based button instead.
     self.closeButton = nil;
     if (asIcon) {
-        // OutSystems fork: an X icon on every iOS version. The caption, if any, only names it for VoiceOver.
-        UIImage *icon = nil;
-        if (@available(iOS 13.0, *)) {
-            icon = [UIImage systemImageNamed:@"xmark"];
+        // OutSystems fork: the same X icon as Android (32pt, 18pt glyph), tinted with closebuttoncolor.
+        // The caption, if any, only names it for VoiceOver. If the image is missing from the bundle,
+        // the SF Symbol, then the system Stop item.
+        UIImage *icon = [[UIImage imageNamed:@"CDVInAppBrowserClose"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+        if (icon == nil) {
+            if (@available(iOS 13.0, *)) {
+                icon = [UIImage systemImageNamed:@"xmark"];
+            }
         }
         self.closeButton = icon != nil
             ? [[UIBarButtonItem alloc] initWithImage:icon style:UIBarButtonItemStylePlain target:self action:@selector(close)]
             : [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemStop target:self action:@selector(close)];
         self.closeButton.accessibilityLabel = title ?: NSLocalizedString(@"Close", nil);
+        // iOS 26 draws bar buttons on a glass capsule, larger than the icon; Android has none.
+        // Set through KVC so that this builds with SDKs older than iOS 26.
+        if ([self.closeButton respondsToSelector:NSSelectorFromString(@"setHidesSharedBackground:")]) {
+            [self.closeButton setValue:@YES forKey:@"hidesSharedBackground"];
+        }
     } else {
         // Initialize with title if set, otherwise use the system-localized Close/Done item.
         self.closeButton = title != nil ? [[UIBarButtonItem alloc] initWithTitle:title style:UIBarButtonItemStylePlain target:self action:@selector(close)] : [[UIBarButtonItem alloc] initWithBarButtonSystemItem:CDVWKInAppBrowserCloseButtonSystemItem() target:self action:@selector(close)];

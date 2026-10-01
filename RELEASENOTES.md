@@ -20,6 +20,11 @@
 -->
 # Release Notes
 
+## 7.0.1-os.4
+
+* fix(ios): `toolbarheight` below the toolbar's own height no longer lets the buttons stick out of the toolbar; the background grows to the bar instead
+* feat(ios): `closebuttonicon=yes` uses the Android close icon (32pt, 18pt glyph) and, on iOS 26, no glass capsule, so the button is the same size on both platforms
+
 ## 7.0.1-os.3
 
 * fix(android): ask the user before granting the camera, microphone or location to a page, and only for origins in the new `permissionorigins` option; the runtime permission is requested when missing (was: every request from any page granted)
