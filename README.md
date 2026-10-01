@@ -44,6 +44,26 @@ This plugin provides a web browser view that displays when calling `cordova.InAp
 
     var ref = cordova.InAppBrowser.open('https://apache.org', '_blank', 'location=yes');
 
+## OutSystems fork
+
+This repository is a fork of [apache/cordova-plugin-inappbrowser](https://github.com/apache/cordova-plugin-inappbrowser), used to open partner websites as mini apps in OutSystems mobile apps built with MABS. The OutSystems wrapper (client actions, block, partner bridge script) and its guide, in Vietnamese, are in [`outsystems/`](outsystems/README.md). Changes per version are in [RELEASENOTES.md](RELEASENOTES.md).
+
+Install a tagged release from Git:
+
+    cordova plugin add https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.4
+
+Changes from the upstream plugin:
+
+- New `open` options for Android and iOS: `statusbarcolor`, `statusbarstyle`, `closebuttonicon`, `toolbarheight` and `permissionorigins`, described under [cordova.InAppBrowser.open](#cordovainappbrowseropen).
+- Android no longer grants the camera, microphone or location to any page. Pages on a `permissionorigins` origin may ask; the user confirms in a dialog, then Android asks for the runtime permission if the app does not have it yet.
+- On iOS 15+ the camera and microphone are limited to `permissionorigins` origins, and WebKit asks the user.
+- Android 15+ (targetSdk 35): the toolbar, web view and keyboard are kept clear of the system bars, as the browser is drawn edge-to-edge.
+- Android destroys the browser WebView, and the WebViews created for `window.open`, as soon as they are no longer needed.
+- iOS ignores script messages from iframes, and no longer logs the script or result of `executeScript`.
+- iOS reports a `loaderror` and reloads once when the web content process is terminated, instead of showing a blank page.
+- iOS keeps text options as text: a number-like or `yes`/`no` `closebuttoncaption` no longer crashes, and `beforeload=no` turns beforeload off.
+- Requires cordova-android 10.0.0 or later.
+
 ### `window.open`
 
 The `cordova.InAppBrowser.open()` function is defined to be a drop-in replacement
@@ -109,6 +129,14 @@ instance, or the system browser.
     All platforms support:
 
     - __location__: Set to `yes` or `no` to turn the `InAppBrowser`'s location bar on or off.
+
+    Android and iOS also support these options of the [OutSystems fork](#outsystems-fork):
+
+    - __statusbarcolor__: set to a hex color string, for example `#1068EB`, to paint the status bar area. On Android 15+ the plugin paints this area itself, as `setStatusBarColor` has no effect there.
+    - __statusbarstyle__: set to `lightcontent` (light text and icons, for dark colors) or `darkcontent` (dark text and icons, for light colors). On iOS it takes precedence over the `InAppBrowserStatusBarStyle` preference.
+    - __closebuttonicon__: set to `yes` to show the close button as an X icon, the same icon on both platforms (32pt/dp). __closebuttoncaption__ then only labels it for VoiceOver and TalkBack. On iOS 26 the button has no glass background.
+    - __toolbarheight__: toolbar height in dp (Android) or points (iOS), without the safe area. On iOS it is never lower than the toolbar's own height. On Android it only has effect if location is set to `yes`.
+    - __permissionorigins__: origins whose pages may ask for the camera, microphone and location, separated by `|`, for example `https://a.example.com|https://b.example.com`. Without it, any origin may ask. On Android the user always confirms in a dialog first; on iOS 15+ the camera and microphone are limited to these origins and WebKit asks the user.
 
     Android supports these additional options:
 

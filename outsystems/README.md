@@ -2,26 +2,66 @@
 
 Bản fork của [apache/cordova-plugin-inappbrowser](https://github.com/apache/cordova-plugin-inappbrowser) tại nhánh `master` (7.0.1-dev), dùng để mở website của đối tác như một mini app trong app mobile OutSystems. Kèm theo là code cho module wrapper trong OutSystems và script cho phía đối tác.
 
-Khác biệt so với bản gốc (`7.0.1-os.4`):
+## Các thay đổi so với bản gốc
 
-- **Option mới `statusbarcolor` và `statusbarstyle`** (iOS và Android). `statusbarcolor=#RRGGBB` là màu nền vùng status bar. `statusbarstyle=lightcontent|darkcontent` là màu chữ và icon status bar. Option này áp dụng cho từng lần mở và được ưu tiên hơn preference `InAppBrowserStatusBarStyle`.
-- **Option mới `closebuttonicon=yes`** (iOS và Android): nút Đóng là icon X thay cho chữ. Khi đó `closebuttoncaption` chỉ dùng làm nhãn cho VoiceOver/TalkBack. Ở bản gốc, iOS dưới 26 luôn hiện chữ ("Done" hoặc caption).
-- **iOS:** khi không truyền `statusbarcolor`, vùng status bar được tô cùng màu toolbar (nếu toolbar ở trên), hoặc theo màu nền hệ thống. Bản gốc để trống vùng này, nên status bar thường hiện nền đen.
-- **Android 15 trở lên (targetSdk 35):** Android ép cửa sổ InAppBrowser vẽ tràn viền (edge-to-edge), nên ở bản gốc toolbar bị status bar đè, còn web bị thanh điều hướng và bàn phím che. Bản fork chừa lề theo system bar và bàn phím, rồi tô vùng status bar bằng `statusbarcolor` (không có thì dùng màu toolbar). Từ Android 14 trở xuống, màu được đặt bằng `setStatusBarColor`.
-- **Option mới `toolbarheight`** (iOS và Android): chiều cao toolbar, tính bằng dp trên Android và pt trên iOS, không gồm safe area. Mặc định của bản gốc là 48dp trên Android và khoảng 60pt trên iOS.
-- **iOS:** khi iOS kill WebContent process của mini app (thường do thiếu bộ nhớ), plugin báo `loaderror` rồi tự tải lại trang. Nếu process lại bị kill trong vòng 10 giây thì không tải lại nữa, để tránh vòng lặp. Bản gốc chỉ để trang trắng.
-- **iOS:** option dạng chuỗi (caption, màu, ...) luôn được giữ là chuỗi. Ở bản gốc, `closebuttoncaption=1` hay `closebuttoncaption=No` làm app crash, vì giá trị bị đọc thành số hoặc Boolean. Cũng nhờ vậy `beforeload=no` giờ được hiểu đúng là tắt.
+Bản hiện tại: `7.0.1-os.4`. Chi tiết từng bản ở [RELEASENOTES.md](../RELEASENOTES.md).
+
+### Option mới của `cordova.InAppBrowser.open`
+
+| Option | Nền tảng | Ý nghĩa |
+|---|---|---|
+| `statusbarcolor=#RRGGBB` | iOS, Android | Màu nền vùng status bar. |
+| `statusbarstyle=lightcontent\|darkcontent` | iOS, Android | Màu chữ và icon status bar. Trên iOS, option này được ưu tiên hơn preference `InAppBrowserStatusBarStyle`. |
+| `closebuttonicon=yes` | iOS, Android | Nút Đóng là icon X. Hai nền tảng dùng chung một icon (khung 32pt/dp, chữ X 18pt/dp). `closebuttoncaption` khi đó chỉ là nhãn cho VoiceOver/TalkBack. |
+| `toolbarheight=<số>` | iOS, Android | Chiều cao toolbar, tính bằng dp trên Android và pt trên iOS, không gồm safe area. Trên iOS, toolbar không thấp hơn chiều cao thật của thanh. |
+| `permissionorigins=<origin>\|<origin>` | iOS, Android | Các origin được xin quyền camera, micro và vị trí. Không truyền thì mọi origin đều được xin, nhưng luôn phải được user đồng ý. |
+
+Wrapper OutSystems tự truyền các option này. Khi gọi plugin trực tiếp thì truyền tay.
+
+### Sửa lỗi và thay đổi hành vi
+
+**Android:**
+
+- **Android 15 trở lên (targetSdk 35):** Android ép cửa sổ InAppBrowser vẽ tràn viền (edge-to-edge). Ở bản gốc, toolbar bị status bar đè, còn web bị thanh điều hướng và bàn phím che. Bản fork chừa lề theo system bar và bàn phím, rồi tô vùng status bar bằng `statusbarcolor`, không có thì dùng màu toolbar. Từ Android 14 trở xuống, màu được đặt bằng `setStatusBarColor`.
 - **Android 11:** màu icon status bar được đặt bằng cả `WindowInsetsController` lẫn cờ kiểu cũ, vì trên một số máy Android 11 chỉ một cách là không đủ.
-- **Quyền camera, micro và vị trí:** trang chỉ được cấp quyền sau khi user đồng ý, và chỉ khi trang ở một origin trong option `permissionorigins` (các origin cách nhau bằng `|`; wrapper truyền `AllowedOrigins` vào đây). Bản gốc trên Android tự cấp mọi quyền cho mọi trang.
-  - **Android:** hiện hộp thoại "partner.com muốn dùng camera của bạn". Mỗi origin chỉ hỏi một lần cho tới khi đóng mini app. Nếu app chưa có quyền runtime của Android thì hệ thống hỏi tiếp. Vị trí cũng được hỏi và nhớ như vậy. Chỉ camera, micro và vị trí được cấp; protected media và MIDI luôn bị từ chối.
-  - **iOS 15 trở lên:** camera và micro chỉ được xin khi trang thuộc `permissionorigins`, sau đó WebKit tự hỏi user. Vị trí và iOS dưới 15 không có API để lọc theo origin, nên WebKit hỏi user như bình thường.
-- **Android:** WebView được destroy khi đóng mini app và khi mở lại, còn WebView tạm cho `window.open` được destroy ngay sau khi chuyển điều hướng về. Bản gốc giữ chúng tới khi GC chạy.
-- **iOS:** chỉ nhận message từ trang chính, bỏ qua message từ iframe. Không ghi script hay kết quả của `executeScript` vào log (script giao token có chứa JWT). Message handler được gỡ đúng cách khi đóng.
+- **Quyền camera, micro và vị trí:** bản gốc tự cấp mọi quyền cho mọi trang. Bản fork chỉ cho trang thuộc `permissionorigins` xin quyền, rồi hiện hộp thoại "partner.com muốn dùng camera của bạn" để user quyết định.
+  - Nếu app chưa có quyền runtime của Android thì hệ thống hỏi tiếp.
+  - Mỗi origin chỉ bị hỏi một lần cho mỗi loại quyền, cho tới khi đóng mini app.
+  - Chỉ camera, micro và vị trí được cấp. Protected media và MIDI luôn bị từ chối.
+  - `InAppChromeClient` mặc định từ chối.
+- **Bộ nhớ:** WebView được destroy khi đóng và khi mở lại mini app. WebView tạm của `window.open` được destroy ngay sau khi điều hướng đã chuyển về WebView chính. Bản gốc giữ chúng tới khi GC chạy.
+- **Đóng nhầm mini app mới mở:** ở bản gốc, nếu trang `about:blank` (tải lúc đóng) xong muộn, nó có thể đóng nhầm mini app vừa được mở lại. Lỗi này đã được sửa.
 - Plugin yêu cầu cordova-android ≥ 10.0.0, vì code dùng API 30 (`WindowInsets.Type`).
 
-Đã kiểm tra khai báo engine với MABS: cordova-ios 7.1.1 và cordova-android 14.0.1. Code native đã compile với header cordova-ios 7.1.1 và Android SDK 35.
+**iOS:**
 
-**Màu:** lúc mở mini app, status bar và toolbar lấy màu primary của app, tức biến CSS `--color-primary` của theme OutSystems UI. Chữ và icon status bar, cùng nút Đóng, tự chọn màu trắng hoặc tối. Màu trắng được dùng khi đạt độ tương phản ít nhất 3:1 với màu nền. Nếu app không khai báo `--color-primary`, màu sẽ theo chế độ Sáng/Tối của máy.
+- **Vùng status bar:** khi không truyền `statusbarcolor`, vùng này được tô cùng màu toolbar (nếu toolbar ở trên), hoặc theo màu nền hệ thống. Bản gốc để trống vùng này, nên status bar thường hiện nền đen.
+- **Nút Đóng dạng icon:** dùng chung icon với Android, nên kích thước giống nhau. Trên iOS 26, nút không có nền kính dạng viên thuốc. Ở bản gốc, iOS dưới 26 luôn hiện chữ ("Done" hoặc caption).
+- **Chiều cao toolbar:** nếu `toolbarheight` thấp hơn chiều cao thật của thanh (44pt, cao hơn trên iOS 26), vùng toolbar tự giãn ra, nên nút không tràn ra ngoài.
+- **WebContent process bị kill** (thường do thiếu bộ nhớ): plugin báo `loaderror` rồi tự tải lại trang. Nếu process lại bị kill trong vòng 10 giây thì không tải lại nữa, để tránh vòng lặp. Bản gốc chỉ để trang trắng.
+- **Option dạng chuỗi** (caption, màu, ...) luôn được giữ là chuỗi. Ở bản gốc, `closebuttoncaption=1` hay `closebuttoncaption=No` làm app crash, vì giá trị bị đọc thành số hoặc Boolean. Cũng nhờ vậy `beforeload=no` giờ được hiểu đúng là tắt.
+- **Quyền camera và micro (iOS 15 trở lên):** chỉ được xin khi trang thuộc `permissionorigins`, sau đó WebKit tự hỏi user. Với quyền vị trí, và với iOS dưới 15, không có API để lọc theo origin, nên WebKit hỏi user như bình thường.
+- **Message và log:**
+  - Chỉ nhận message từ trang chính, bỏ qua message từ iframe.
+  - Không ghi script hay kết quả của `executeScript` vào log, vì script giao token có chứa JWT.
+  - Message handler được gỡ đúng cách khi đóng.
+
+### Wrapper OutSystems (`outsystems/`)
+
+- **Màu:** lúc mở mini app, status bar và toolbar lấy màu primary của app (biến CSS `--color-primary` của OutSystems UI). Chữ và icon status bar, cùng nút Đóng, dùng màu trắng nếu đạt độ tương phản ít nhất 3:1, không thì dùng màu tối. Nếu app không khai báo `--color-primary`, màu theo chế độ Sáng/Tối của máy.
+- **Chiều cao toolbar:** chọn theo thứ tự `ToolbarHeight`, rồi `ToolbarHeightClass`, rồi `--header-size`.
+  - `ToolbarHeight` nhận số hoặc chuỗi (`56`, `"56px"`, `"3.5rem"`), tối thiểu là 44.
+  - `ToolbarHeightClass` đọc giá trị `height` được khai báo cho class trong CSS.
+- **Nút Đóng:** nằm bên phải trên cả hai nền tảng. `CloseButtonIcon` để dùng icon X thay cho chữ.
+- **JWT:** web lấy token bằng `MiniAppBridge.getToken()`. App trả token qua `AuthToken`, hoặc qua `OnTokenRequest` và `MiniApp_SetToken`. Origin của trang được kiểm tra ngay lúc giao token.
+- **HTTPS:** `Url` và `AllowedOrigins` bắt buộc là HTTPS. `AllowedOrigins` được quy về origin, và cũng là danh sách origin được xin quyền thiết bị.
+
+### Đã kiểm tra
+
+- Khai báo engine khớp với MABS: cordova-ios 7.1.1 và cordova-android 14.0.1.
+- Code Android compile với Android SDK 35 và 36.
+- Code iOS tới bản `7.0.1-os.3` compile với header cordova-ios 7.1.1 (target iOS 11 và 15).
+- **Phần iOS sửa trong `7.0.1-os.4` chưa được compile trên máy phát triển**, cần xác nhận qua bản build MABS.
 
 ## 1. Publish plugin
 
