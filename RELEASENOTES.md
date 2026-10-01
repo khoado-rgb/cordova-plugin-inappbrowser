@@ -20,7 +20,7 @@
 -->
 # Release Notes
 
-## 7.0.1-os.7 (unreleased)
+## 7.0.1-os.7
 
 * fix(android): when `shouldOverrideUrlLoading` cannot cancel an http page under `httpsonly` (form post, back, reload, or any navigation on Android 6 and older), the plugin answers the request itself with an empty page, so nothing goes over http and no http content runs, then goes back to the page before (a blank page only when there is none). The `loaderror` is the only event for it: no more `loadstop` of the stopped page, `loaderror` of its cleartext failure, or `loadstart`/`loadstop` of a blank page (which made the OutSystems wrapper raise `OnLoaded("about:blank")`), and Back and Forward no longer get stuck on a blank page
 * fix(ios): the `httpsonly` `loaderror` code is the number `-1`, as on Android
