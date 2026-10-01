@@ -41,7 +41,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.graphics.Typeface;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -146,10 +148,12 @@ public class InAppBrowser extends CordovaPlugin {
     // OutSystems fork: origins whose pages may ask for the camera, microphone and location,
     // separated by "|". Without it, any origin may ask. The user always confirms first.
     private static final String PERMISSION_ORIGINS = "permissionorigins";
+    // OutSystems fork: title on the left of the toolbar, in the place of the hidden URL bar
+    private static final String TOOLBAR_TITLE = "toolbartitle";
 
     private static final int TOOLBAR_HEIGHT = 48;
 
-    private static final List customizableOptions = Arrays.asList(CLOSE_BUTTON_CAPTION, TOOLBAR_COLOR, NAVIGATION_COLOR, CLOSE_BUTTON_COLOR, FOOTER_COLOR, STATUS_BAR_COLOR, STATUS_BAR_STYLE, TOOLBAR_HEIGHT_OPTION, PERMISSION_ORIGINS);
+    private static final List customizableOptions = Arrays.asList(CLOSE_BUTTON_CAPTION, TOOLBAR_COLOR, NAVIGATION_COLOR, CLOSE_BUTTON_COLOR, FOOTER_COLOR, STATUS_BAR_COLOR, STATUS_BAR_STYLE, TOOLBAR_HEIGHT_OPTION, PERMISSION_ORIGINS, TOOLBAR_TITLE);
 
     private InAppBrowserDialog dialog;
     private WebView inAppWebView;
@@ -182,6 +186,7 @@ public class InAppBrowser extends CordovaPlugin {
     private String statusBarStyle = "";
     private boolean closeButtonIcon = false;
     private int toolbarHeight = TOOLBAR_HEIGHT;
+    private String toolbarTitle = "";
     private String[] permissionOrigins = null;
     // "<origin> <resource>" pairs the user allowed while this browser is open
     private final Set<String> allowedPermissions = new HashSet<String>();
@@ -984,6 +989,7 @@ public class InAppBrowser extends CordovaPlugin {
         statusBarStyle = "";
         closeButtonIcon = false;
         toolbarHeight = TOOLBAR_HEIGHT;
+        toolbarTitle = "";
         permissionOrigins = null;
         allowedPermissions.clear();
         pendingPermissions.clear();
@@ -1097,6 +1103,10 @@ public class InAppBrowser extends CordovaPlugin {
                     LOG.e(LOG_TAG, "Invalid toolbarheight: " + toolbarHeightSet);
                 }
             }
+            String toolbarTitleSet = features.get(TOOLBAR_TITLE);
+            if (toolbarTitleSet != null) {
+                toolbarTitle = toolbarTitleSet.trim();
+            }
             String permissionOriginsSet = features.get(PERMISSION_ORIGINS);
             if (permissionOriginsSet != null) {
                 // Invalid entries are dropped, so a list with none left denies every origin.
@@ -1170,16 +1180,26 @@ public class InAppBrowser extends CordovaPlugin {
                     close.setTextSize(20);
                     if (closeButtonColor != "") close.setTextColor(android.graphics.Color.parseColor(closeButtonColor));
                     close.setGravity(android.view.Gravity.CENTER_VERTICAL);
-                    close.setPadding(this.dpToPixels(10), 0, this.dpToPixels(10), 0);
+                    // OutSystems fork: the caption ends 16dp from the edge, with the toolbar's 2dp padding,
+                    // like the title on the other side.
+                    int edgePadding = this.dpToPixels(14);
+                    int innerPadding = this.dpToPixels(10);
+                    close.setPadding(leftToRight ? edgePadding : innerPadding, 0, leftToRight ? innerPadding : edgePadding, 0);
                     _close = close;
                 }
                 else {
                     ImageButton close = new ImageButton(cordova.getActivity());
-                    int closeResId = activityRes.getIdentifier("ic_action_remove", "drawable", cordova.getActivity().getPackageName());
+                    // OutSystems fork: closebuttonicon uses an opaque 18dp X, the same as on iOS.
+                    int closeResId = closeButtonIcon
+                            ? activityRes.getIdentifier("ic_miniapp_close", "drawable", cordova.getActivity().getPackageName())
+                            : 0;
+                    if (closeResId == 0) {
+                        closeResId = activityRes.getIdentifier("ic_action_remove", "drawable", cordova.getActivity().getPackageName());
+                    }
                     Drawable closeIcon = activityRes.getDrawable(closeResId);
                     if (closeButtonColor != "") close.setColorFilter(android.graphics.Color.parseColor(closeButtonColor));
                     close.setImageDrawable(closeIcon);
-                    close.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                    close.setScaleType(closeButtonIcon ? ImageView.ScaleType.CENTER : ImageView.ScaleType.FIT_CENTER);
                     close.getAdjustViewBounds();
 
                     _close = close;
@@ -1190,6 +1210,17 @@ public class InAppBrowser extends CordovaPlugin {
                 else closeLayoutParams.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
                 _close.setLayoutParams(closeLayoutParams);
                 _close.setBackground(null);
+                if (closeButtonIcon) {
+                    // OutSystems fork: the glyph ends 16dp from the edge, like the title on the other side:
+                    // 2dp toolbar padding, 1dp margin, then 13dp padding each side of the 18dp glyph for a
+                    // 44dp wide touch area.
+                    _close.setPadding(this.dpToPixels(13), 0, this.dpToPixels(13), 0);
+                    if (leftToRight) {
+                        closeLayoutParams.leftMargin = this.dpToPixels(1);
+                    } else {
+                        closeLayoutParams.rightMargin = this.dpToPixels(1);
+                    }
+                }
 
                 // With closebuttonicon, the caption names the icon for TalkBack
                 _close.setContentDescription(closeButtonCaption != "" ? closeButtonCaption : "Close Button");
@@ -1206,13 +1237,18 @@ public class InAppBrowser extends CordovaPlugin {
             /**
              * OutSystems fork: colors the status bar of the dialog window and sets its icon style.
              *
-             * Up to Android 14 the window draws the status bar background itself. From Android 15
-             * (targetSdk 35) the dialog is drawn edge-to-edge, setStatusBarColor has no effect and
-             * the status bar spacer (sized from the insets in run()) shows through instead.
+             * From Android 11 the dialog is drawn edge-to-edge (see run()): the window's own bars are
+             * transparent and the status bar spacer shows through, as setStatusBarColor has no effect
+             * for targetSdk 35 on Android 15+. Up to Android 10 the window draws the status bar color.
              */
             @SuppressLint("NewApi")
             private void styleStatusBar(Window window) {
-                if (statusBarColor != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
+                    window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+                    window.setStatusBarColor(Color.TRANSPARENT);
+                    window.setNavigationBarColor(Color.TRANSPARENT);
+                } else if (statusBarColor != null) {
                     window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
                     window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
                     window.setStatusBarColor(statusBarColor);
@@ -1266,8 +1302,8 @@ public class InAppBrowser extends CordovaPlugin {
                 LinearLayout main = new LinearLayout(cordova.getActivity());
                 main.setOrientation(LinearLayout.VERTICAL);
 
-                // OutSystems fork: status bar backdrop. Its height stays 0 until the window hands the
-                // system bar insets to the content, which only happens edge-to-edge (Android 15+).
+                // OutSystems fork: status bar backdrop, sized from the insets once the dialog is drawn
+                // edge-to-edge (Android 11+). Up to Android 10 it stays 0 high.
                 final View statusBarSpacer = new View(cordova.getActivity());
                 statusBarSpacer.setBackgroundColor(statusBarColor != null ? statusBarColor
                         : (getShowLocationBar() ? toolbarColor : Color.BLACK));
@@ -1275,9 +1311,14 @@ public class InAppBrowser extends CordovaPlugin {
                 main.addView(statusBarSpacer);
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    // Edge-to-edge, the window neither fits the system bars nor resizes for the keyboard:
-                    // keep the toolbar below the status bar, and the web view above the navigation bar
-                    // and the keyboard. Up to Android 14 the window consumes these insets itself (all 0 here).
+                    // The dialog is drawn edge-to-edge, also over the display cutout, so that the status
+                    // bar spacer can paint the area behind the status bar. The window then neither fits
+                    // the system bars nor resizes for the keyboard: keep the toolbar below the status bar,
+                    // and the web view above the navigation bar and the keyboard.
+                    dialog.getWindow().setDecorFitsSystemWindows(false);
+                    WindowManager.LayoutParams windowAttributes = dialog.getWindow().getAttributes();
+                    windowAttributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+                    dialog.getWindow().setAttributes(windowAttributes);
                     dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
                     // Shows behind the navigation bar, like the legacy black navigation bar.
                     main.setBackgroundColor(Color.BLACK);
@@ -1394,6 +1435,29 @@ public class InAppBrowser extends CordovaPlugin {
                 int closeButtonId = leftToRight ? 1 : 5;
                 View close = createCloseButton(closeButtonId);
                 toolbar.addView(close);
+
+                // OutSystems fork: the title takes the place of the hidden URL bar, between the
+                // navigation buttons and the close button (ids 1 and 5, swapped by lefttoright).
+                if (!toolbarTitle.isEmpty() && hideUrlBar) {
+                    TextView title = new TextView(cordova.getActivity());
+                    title.setText(toolbarTitle);
+                    title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+                    title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+                    if (closeButtonColor != "") title.setTextColor(android.graphics.Color.parseColor(closeButtonColor));
+                    title.setSingleLine(true);
+                    title.setEllipsize(TextUtils.TruncateAt.END);
+                    title.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+                    // 16dp from the edge, with the toolbar's own 2dp padding
+                    title.setPadding(this.dpToPixels(14), 0, this.dpToPixels(8), 0);
+                    RelativeLayout.LayoutParams titleLayoutParams = new RelativeLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
+                    titleLayoutParams.addRule(RelativeLayout.RIGHT_OF, 1);
+                    titleLayoutParams.addRule(RelativeLayout.LEFT_OF, 5);
+                    title.setLayoutParams(titleLayoutParams);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        title.setAccessibilityHeading(true);
+                    }
+                    toolbar.addView(title);
+                }
 
                 // Footer
                 RelativeLayout footer = new RelativeLayout(cordova.getActivity());
@@ -1650,16 +1714,13 @@ public class InAppBrowser extends CordovaPlugin {
                     main.addView(footer);
                 }
 
-                WindowManager.LayoutParams lp = new WindowManager.LayoutParams();
-                lp.copyFrom(dialog.getWindow().getAttributes());
-                lp.width = WindowManager.LayoutParams.MATCH_PARENT;
-                lp.height = WindowManager.LayoutParams.MATCH_PARENT;
-
                 if (dialog != null) {
                     dialog.setContentView(main);
                     styleStatusBar(dialog.getWindow());
                     dialog.show();
-                    dialog.getWindow().setAttributes(lp);
+                    // OutSystems fork: was setAttributes() with a copy taken before setContentView, which
+                    // dropped the flags set since then (system bar backgrounds, the dialog layout flags).
+                    dialog.getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
                 }
                 // the goal of openhidden is to load the url and not display it
                 // Show() needs to be called to cause the URL to be loaded

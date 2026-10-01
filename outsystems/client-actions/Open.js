@@ -6,6 +6,7 @@
 //                                  microphone and location (the user is asked first).
 //          AllowedTypes (Text)   - comma separated message types the web may send, e.g. "openPayment,share".
 //                                  "close" and "getToken" are always allowed.
+//          Title (Text)          - shown on the left of the toolbar. Empty = no title.
 //          CloseButtonText (Text, default "Đóng") - must not contain commas.
 //          CloseButtonIcon (Boolean, default False) - X icon instead of the text; the text then
 //                                  only names the button for VoiceOver/TalkBack.
@@ -179,6 +180,8 @@ var toolbarColor = toHex($parameters.ToolbarColor) || statusBarColor;
 var buttonColor = !isLight(toolbarColor) ? '#FFFFFF'
     : (primaryColor && !isLight(primaryColor) ? primaryColor : '#1C1C1E');
 var closeText = ($parameters.CloseButtonText || 'Đóng').replace(/[,=]/g, ' ');
+// Commas and = separate the options, so they cannot be part of a value.
+var title = ($parameters.Title || '').replace(/[,=]/g, ' ').trim();
 // Same height as the app header: given, or declared for a CSS class, or OutSystems UI --header-size.
 var givenHeight = heightPx($parameters.ToolbarHeight);
 var toolbarHeight = Math.round(givenHeight > 0 ? givenHeight
@@ -195,6 +198,7 @@ var common = 'toolbarcolor=' + toolbarColor +
     ',closebuttoncolor=' + buttonColor +
     ',navigationbuttoncolor=' + buttonColor +
     ',closebuttoncaption=' + closeText +
+    (title ? ',toolbartitle=' + title : '') +
     ($parameters.CloseButtonIcon ? ',closebuttonicon=yes' : '') +
     ',permissionorigins=' + allowedOrigins.join('|') +
     ',hidenavigationbuttons=yes';

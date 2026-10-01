@@ -908,6 +908,8 @@ BOOL isExiting = NO;
         [self.toolbar setBackgroundImage:[UIImage new]
                       forToolbarPosition:UIToolbarPositionAny
                               barMetrics:UIBarMetricsDefault];
+        // OutSystems fork: and the hairline UIToolbar still draws along its edge
+        [self.toolbar setShadowImage:[UIImage new] forToolbarPosition:UIToolbarPositionAny];
         // barStyle has to be set to UIBarStyleBlack, otherwhise there would be a gray line left,
         // after the background was removed
         self.toolbar.barStyle = UIBarStyleBlack;
@@ -1062,6 +1064,44 @@ BOOL isExiting = NO;
         ]];
     }
 
+    // OutSystems fork: title on the toolbar, vertically centered on the bar, 16pt from the edge, and
+    // truncated when too long. It keeps clear of the navigation buttons (about 96pt) when shown and
+    // of the system close item (about 56pt), on the sides lefttoright puts them; a caption or icon
+    // close button is placed by setCloseButtonTitle, which then keeps the title 12pt from it.
+    NSString *toolbarTitle = [_browserOptions.toolbartitle stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+    if (toolbarTitle.length > 0) {
+        UILabel *titleLabel = [UILabel new];
+        titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        titleLabel.text = toolbarTitle;
+        titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];
+        if (_browserOptions.closebuttoncolor) {
+            titleLabel.textColor = [self colorFromHexString:_browserOptions.closebuttoncolor];
+        } else if (@available(iOS 13.0, *)) {
+            titleLabel.textColor = UIColor.labelColor;
+        } else {
+            titleLabel.textColor = UIColor.blackColor;
+        }
+        titleLabel.numberOfLines = 1;
+        titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        titleLabel.accessibilityTraits = UIAccessibilityTraitHeader;
+        [titleLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+        [self.toolbarBackground addSubview:titleLabel];
+
+        CGFloat closeSpace = 72;
+        CGFloat navigationSpace = _browserOptions.hidenavigationbuttons ? 16 : 104;
+        CGFloat leadingSpace = _browserOptions.lefttoright ? navigationSpace : closeSpace;
+        CGFloat trailingSpace = _browserOptions.lefttoright ? closeSpace : navigationSpace;
+        // setCloseButtonTitle replaces the constraint on the close button side, once the button is known.
+        self.toolbarTitleLabel = titleLabel;
+        self.toolbarTitleLeadingConstraint = [titleLabel.leadingAnchor constraintEqualToAnchor:self.toolbarBackground.safeAreaLayoutGuide.leadingAnchor constant:leadingSpace];
+        self.toolbarTitleTrailingConstraint = [titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.toolbarBackground.safeAreaLayoutGuide.trailingAnchor constant:-trailingSpace];
+        [NSLayoutConstraint activateConstraints:@[
+            self.toolbarTitleLeadingConstraint,
+            self.toolbarTitleTrailingConstraint,
+            [titleLabel.centerYAnchor constraintEqualToAnchor:self.toolbar.centerYAnchor]
+        ]];
+    }
+
     // Address background horizontal constraints with margin
     [NSLayoutConstraint activateConstraints:@[
         // Left to safe area for proper layout on landscape
@@ -1178,35 +1218,80 @@ BOOL isExiting = NO;
 
 - (void)setCloseButtonTitle:(NSString *)title withColor:(NSString *)colorString asIcon:(BOOL)asIcon atIndex:(int)buttonIndex
 {
-    // The system Close/Done button title is localized automatically.
-    // If a custom caption is provided, create a title-based button instead.
+    // If color on closebutton is requested then use that color, otherwise the default.
+    UIColor *color = colorString != nil ? [self colorFromHexString:colorString] : [UIColor colorWithRed:60.0 / 255.0 green:136.0 / 255.0 blue:230.0 / 255.0 alpha:1];
     self.closeButton = nil;
-    if (asIcon) {
-        // OutSystems fork: the same X icon as Android (32pt, 18pt glyph), tinted with closebuttoncolor.
-        // The caption, if any, only names it for VoiceOver. If the image is missing from the bundle,
-        // the SF Symbol, then the system Stop item.
-        UIImage *icon = [[UIImage imageNamed:@"CDVInAppBrowserClose"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-        if (icon == nil) {
-            if (@available(iOS 13.0, *)) {
-                icon = [UIImage systemImageNamed:@"xmark"];
+    [self.closeOverlayButton removeFromSuperview];
+    self.closeOverlayButton = nil;
+
+    if (!asIcon && title == nil) {
+        // Only a color: the system-localized Close/Done item.
+        self.closeButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:CDVWKInAppBrowserCloseButtonSystemItem() target:self action:@selector(close)];
+        self.closeButton.enabled = YES;
+        self.closeButton.tintColor = color;
+    } else {
+        // OutSystems fork: the icon or caption is a button over the toolbar background, not a toolbar
+        // item: UIToolbar insets items by its own margins (different per iOS version) and, on iOS 26,
+        // draws them with vibrancy on a glass capsule. The glyph or text sits 16pt from the edge, like
+        // the title on the other side, in a 44pt tall touch area.
+        UIImage *icon = nil;
+        if (asIcon) {
+            // An 18pt X (also used on Android); the SF Symbol if the image is missing from the bundle.
+            icon = [UIImage imageNamed:@"CDVInAppBrowserClose"];
+            if (icon == nil) {
+                if (@available(iOS 13.0, *)) {
+                    icon = [UIImage systemImageNamed:@"xmark"];
+                }
             }
         }
-        self.closeButton = icon != nil
-            ? [[UIBarButtonItem alloc] initWithImage:icon style:UIBarButtonItemStylePlain target:self action:@selector(close)]
-            : [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemStop target:self action:@selector(close)];
-        self.closeButton.accessibilityLabel = title ?: NSLocalizedString(@"Close", nil);
-        // iOS 26 draws bar buttons on a glass capsule, larger than the icon; Android has none.
-        // Set through KVC so that this builds with SDKs older than iOS 26.
-        if ([self.closeButton respondsToSelector:NSSelectorFromString(@"setHidesSharedBackground:")]) {
-            [self.closeButton setValue:@YES forKey:@"hidesSharedBackground"];
+        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+        button.translatesAutoresizingMaskIntoConstraints = NO;
+        button.tintColor = color;
+        if (icon != nil) {
+            [button setImage:[icon imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate] forState:UIControlStateNormal];
+            // The caption, if any, only names the icon for VoiceOver.
+            button.accessibilityLabel = title ?: NSLocalizedString(@"Close", nil);
+        } else {
+            [button setTitle:title ?: NSLocalizedString(@"Close", nil) forState:UIControlStateNormal];
+            button.titleLabel.font = [UIFont systemFontOfSize:17];
         }
-    } else {
-        // Initialize with title if set, otherwise use the system-localized Close/Done item.
-        self.closeButton = title != nil ? [[UIBarButtonItem alloc] initWithTitle:title style:UIBarButtonItemStylePlain target:self action:@selector(close)] : [[UIBarButtonItem alloc] initWithBarButtonSystemItem:CDVWKInAppBrowserCloseButtonSystemItem() target:self action:@selector(close)];
+        [button addTarget:self action:@selector(close) forControlEvents:UIControlEventTouchUpInside];
+        [self.toolbarBackground addSubview:button];
+
+        // Index 0 is the left end of the toolbar (lefttoright=no), the others the right end.
+        BOOL onTheRight = buttonIndex > 0;
+        // The icon is centered in a 44pt wide touch area, 13pt wider than the glyph on each side.
+        CGFloat edgeInset = icon != nil ? 16 - 13 : 16;
+        NSMutableArray<NSLayoutConstraint *> *constraints = [NSMutableArray arrayWithObjects:
+            [button.centerYAnchor constraintEqualToAnchor:self.toolbar.centerYAnchor],
+            [button.heightAnchor constraintEqualToConstant:44],
+            onTheRight
+                ? [button.trailingAnchor constraintEqualToAnchor:self.toolbarBackground.safeAreaLayoutGuide.trailingAnchor constant:-edgeInset]
+                : [button.leadingAnchor constraintEqualToAnchor:self.toolbarBackground.safeAreaLayoutGuide.leadingAnchor constant:edgeInset],
+            nil];
+        if (icon != nil) {
+            [constraints addObject:[button.widthAnchor constraintEqualToConstant:44]];
+        }
+        [NSLayoutConstraint activateConstraints:constraints];
+        self.closeOverlayButton = button;
+
+        // The title keeps 12pt from the button, instead of the space reserved for a toolbar item.
+        if (self.toolbarTitleLabel != nil) {
+            if (onTheRight) {
+                self.toolbarTitleTrailingConstraint.active = NO;
+                self.toolbarTitleTrailingConstraint = [self.toolbarTitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:button.leadingAnchor constant:-12];
+                self.toolbarTitleTrailingConstraint.active = YES;
+            } else {
+                self.toolbarTitleLeadingConstraint.active = NO;
+                self.toolbarTitleLeadingConstraint = [self.toolbarTitleLabel.leadingAnchor constraintEqualToAnchor:button.trailingAnchor constant:12];
+                self.toolbarTitleLeadingConstraint.active = YES;
+            }
+        }
+
+        // The toolbar keeps an empty item in place of the button.
+        self.closeButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFixedSpace target:nil action:nil];
+        self.closeButton.width = 0;
     }
-    self.closeButton.enabled = YES;
-    // If color on closebutton is requested then initialize with that that color, otherwise use initialize with default.
-    self.closeButton.tintColor = colorString != nil ? [self colorFromHexString:colorString] : [UIColor colorWithRed:60.0 / 255.0 green:136.0 / 255.0 blue:230.0 / 255.0 alpha:1];
 
     NSMutableArray *items = [self.toolbar.items mutableCopy];
     [items replaceObjectAtIndex:buttonIndex withObject:self.closeButton];

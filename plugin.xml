@@ -21,7 +21,7 @@
 -->
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
            id="cordova-plugin-inappbrowser"
-      version="7.0.1-os.4">
+      version="7.0.1-os.5">
 
     <name>InAppBrowser</name>
     <description>Cordova InAppBrowser Plugin</description>
@@ -67,6 +67,12 @@
         <resource-file src="src/android/res/drawable-xhdpi/ic_action_remove.png" target="res/drawable-xhdpi/ic_action_remove.png" />
         <resource-file src="src/android/res/drawable-xxhdpi/ic_action_remove.png" target="res/drawable-xxhdpi/ic_action_remove.png" />
 
+        <!-- OutSystems fork: opaque 18dp X for closebuttonicon=yes -->
+        <resource-file src="src/android/res/drawable-hdpi/ic_miniapp_close.png" target="res/drawable-hdpi/ic_miniapp_close.png" />
+        <resource-file src="src/android/res/drawable-mdpi/ic_miniapp_close.png" target="res/drawable-mdpi/ic_miniapp_close.png" />
+        <resource-file src="src/android/res/drawable-xhdpi/ic_miniapp_close.png" target="res/drawable-xhdpi/ic_miniapp_close.png" />
+        <resource-file src="src/android/res/drawable-xxhdpi/ic_miniapp_close.png" target="res/drawable-xxhdpi/ic_miniapp_close.png" />
+
     </platform>
 
     <!-- ios -->
@@ -89,7 +95,7 @@
 	    <header-file src="src/ios/CDVWKInAppBrowserUIDelegate.h" />
 	    <source-file src="src/ios/CDVWKInAppBrowserUIDelegate.m" />
 
-	    <!-- OutSystems fork: the Android close icon, for closebuttonicon=yes -->
+	    <!-- OutSystems fork: opaque 18pt X for closebuttonicon=yes, the same as on Android -->
 	    <resource-file src="src/ios/res/CDVInAppBrowserClose@2x.png" />
 	    <resource-file src="src/ios/res/CDVInAppBrowserClose@3x.png" />
 

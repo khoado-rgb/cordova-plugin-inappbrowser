@@ -76,6 +76,11 @@ typedef NSDictionary CDVSettingsDictionary;
 @property (nonatomic, strong) IBOutlet UIView *toolbarBackground;
 @property (nonatomic, strong) IBOutlet UIToolbar *toolbar;
 @property (nonatomic, strong) IBOutlet CDVWKInAppBrowserUIDelegate *webViewUIDelegate;
+// OutSystems fork: toolbar title, and the close button drawn over the toolbar background
+@property (nonatomic, strong) UILabel *toolbarTitleLabel;
+@property (nonatomic, strong) NSLayoutConstraint *toolbarTitleLeadingConstraint;
+@property (nonatomic, strong) NSLayoutConstraint *toolbarTitleTrailingConstraint;
+@property (nonatomic, strong) UIButton *closeOverlayButton;
 
 @property (nonatomic, weak) CDVWKInAppBrowser *navigationDelegate;
 @property (nonatomic) NSURL *currentURL;

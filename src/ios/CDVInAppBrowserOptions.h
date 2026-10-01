@@ -55,6 +55,8 @@
 @property (nonatomic, assign) double toolbarheight;
 // OutSystems fork: origins whose pages may ask for the camera and microphone, separated by "|"; nil = any origin
 @property (nonatomic, copy) NSString *permissionorigins;
+// OutSystems fork: title on the toolbar, on the side away from the close button
+@property (nonatomic, copy) NSString *toolbartitle;
 
 + (CDVInAppBrowserOptions *)parseOptions:(NSString *)options;
 

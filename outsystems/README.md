@@ -4,7 +4,7 @@ Bản fork của [apache/cordova-plugin-inappbrowser](https://github.com/apache/
 
 ## Các thay đổi so với bản gốc
 
-Bản hiện tại: `7.0.1-os.4`. Chi tiết từng bản ở [RELEASENOTES.md](../RELEASENOTES.md).
+Bản hiện tại: `7.0.1-os.5`. Chi tiết từng bản ở [RELEASENOTES.md](../RELEASENOTES.md).
 
 ### Option mới của `cordova.InAppBrowser.open`
 
@@ -12,8 +12,9 @@ Bản hiện tại: `7.0.1-os.4`. Chi tiết từng bản ở [RELEASENOTES.md](
 |---|---|---|
 | `statusbarcolor=#RRGGBB` | iOS, Android | Màu nền vùng status bar. |
 | `statusbarstyle=lightcontent\|darkcontent` | iOS, Android | Màu chữ và icon status bar. Trên iOS, option này được ưu tiên hơn preference `InAppBrowserStatusBarStyle`. |
-| `closebuttonicon=yes` | iOS, Android | Nút Đóng là icon X. Hai nền tảng dùng chung một icon (khung 32pt/dp, chữ X 18pt/dp). `closebuttoncaption` khi đó chỉ là nhãn cho VoiceOver/TalkBack. |
+| `closebuttonicon=yes` | iOS, Android | Nút Đóng là icon X 18pt/dp, trắng đục, dùng chung trên hai nền tảng và tô theo `closebuttoncolor`. Chữ X cách mép 16pt/dp, vùng bấm 44pt/dp. `closebuttoncaption` khi đó chỉ là nhãn cho VoiceOver/TalkBack. |
 | `toolbarheight=<số>` | iOS, Android | Chiều cao toolbar, tính bằng dp trên Android và pt trên iOS, không gồm safe area. Trên iOS, toolbar không thấp hơn chiều cao thật của thanh. |
+| `toolbartitle=<chữ>` | iOS, Android | Title trên toolbar, ở phía không có nút Đóng (với wrapper là bên trái), cách mép 16pt/dp. Cỡ 17, chữ đậm vừa, cùng màu nút Đóng, bị cắt bằng "…" nếu quá dài. Trên Android chỉ hiện khi thanh URL bị ẩn (`hideurlbar=yes`). |
 | `permissionorigins=<origin>\|<origin>` | iOS, Android | Các origin được xin quyền camera, micro và vị trí. Không truyền thì mọi origin đều được xin, nhưng luôn phải được user đồng ý. |
 
 Wrapper OutSystems tự truyền các option này. Khi gọi plugin trực tiếp thì truyền tay.
@@ -22,13 +23,18 @@ Wrapper OutSystems tự truyền các option này. Khi gọi plugin trực tiế
 
 **Android:**
 
-- **Android 15 trở lên (targetSdk 35):** Android ép cửa sổ InAppBrowser vẽ tràn viền (edge-to-edge). Ở bản gốc, toolbar bị status bar đè, còn web bị thanh điều hướng và bàn phím che. Bản fork chừa lề theo system bar và bàn phím, rồi tô vùng status bar bằng `statusbarcolor`, không có thì dùng màu toolbar. Từ Android 14 trở xuống, màu được đặt bằng `setStatusBarColor`.
+- **Status bar:** bản gốc không tô được status bar. Nó sao chép thuộc tính cửa sổ trước `setContentView` rồi ghi lại sau `show()`, làm mất các cờ được đặt ở giữa, nên dialog bị đặt phía dưới status bar và phần tai thỏ. Khi đó vùng phía trên toolbar để lộ app phía sau.
+  - Từ Android 11, bản fork vẽ dialog tràn viền (edge-to-edge), kể cả vùng tai thỏ, với system bar trong suốt. Một view nền tô vùng phía sau status bar bằng `statusbarcolor` (không có thì dùng màu toolbar).
+  - Plugin cũng chừa lề cho toolbar, thanh điều hướng và bàn phím.
+  - Từ Android 10 trở xuống, màu được đặt bằng `setStatusBarColor`.
+  - Với app targetSdk 35 chạy trên Android 15 trở lên, `setStatusBarColor` luôn trong suốt, nên đây là cách duy nhất.
 - **Android 11:** màu icon status bar được đặt bằng cả `WindowInsetsController` lẫn cờ kiểu cũ, vì trên một số máy Android 11 chỉ một cách là không đủ.
 - **Quyền camera, micro và vị trí:** bản gốc tự cấp mọi quyền cho mọi trang. Bản fork chỉ cho trang thuộc `permissionorigins` xin quyền, rồi hiện hộp thoại "partner.com muốn dùng camera của bạn" để user quyết định.
   - Nếu app chưa có quyền runtime của Android thì hệ thống hỏi tiếp.
   - Mỗi origin chỉ bị hỏi một lần cho mỗi loại quyền, cho tới khi đóng mini app.
   - Chỉ camera, micro và vị trí được cấp. Protected media và MIDI luôn bị từ chối.
   - `InAppChromeClient` mặc định từ chối.
+- **Nút Đóng:** với `closebuttonicon=yes`, nút dùng icon X 18dp trắng đục, có vùng bấm 44dp. Chữ X, hoặc chữ caption khi không dùng icon, cách mép 16dp, bằng khoảng cách của title. Icon gốc của bản gốc là `#333` với alpha 60%, nên khi tô trắng chỉ ra màu trắng nhạt.
 - **Bộ nhớ:** WebView được destroy khi đóng và khi mở lại mini app. WebView tạm của `window.open` được destroy ngay sau khi điều hướng đã chuyển về WebView chính. Bản gốc giữ chúng tới khi GC chạy.
 - **Đóng nhầm mini app mới mở:** ở bản gốc, nếu trang `about:blank` (tải lúc đóng) xong muộn, nó có thể đóng nhầm mini app vừa được mở lại. Lỗi này đã được sửa.
 - Plugin yêu cầu cordova-android ≥ 10.0.0, vì code dùng API 30 (`WindowInsets.Type`).
@@ -36,7 +42,11 @@ Wrapper OutSystems tự truyền các option này. Khi gọi plugin trực tiế
 **iOS:**
 
 - **Vùng status bar:** khi không truyền `statusbarcolor`, vùng này được tô cùng màu toolbar (nếu toolbar ở trên), hoặc theo màu nền hệ thống. Bản gốc để trống vùng này, nên status bar thường hiện nền đen.
-- **Nút Đóng dạng icon:** dùng chung icon với Android, nên kích thước giống nhau. Trên iOS 26, nút không có nền kính dạng viên thuốc. Ở bản gốc, iOS dưới 26 luôn hiện chữ ("Done" hoặc caption).
+- **Nút Đóng (icon hoặc chữ):** được vẽ thành một nút riêng phía trên nền toolbar, không còn là item của `UIToolbar`.
+  - Chữ X hoặc chữ caption cách mép 16pt trên mọi bản iOS, bằng khoảng cách của title ở phía bên kia, và đúng màu được truyền vào.
+  - Trước đây `UIToolbar` tự thêm lề (chữ X cách mép 31pt trên iOS 18 và 39pt trên iOS 26), còn iOS 26 làm nhạt màu nút và thêm nền kính dạng viên thuốc.
+  - Icon là chữ X 18pt dùng chung với Android. Ở bản gốc, iOS dưới 26 luôn hiện chữ ("Done" hoặc caption).
+- **Đường kẻ mảnh** ở mép trên toolbar (iOS 18 trở xuống) đã bị tắt.
 - **Chiều cao toolbar:** nếu `toolbarheight` thấp hơn chiều cao thật của thanh (44pt, cao hơn trên iOS 26), vùng toolbar tự giãn ra, nên nút không tràn ra ngoài.
 - **WebContent process bị kill** (thường do thiếu bộ nhớ): plugin báo `loaderror` rồi tự tải lại trang. Nếu process lại bị kill trong vòng 10 giây thì không tải lại nữa, để tránh vòng lặp. Bản gốc chỉ để trang trắng.
 - **Option dạng chuỗi** (caption, màu, ...) luôn được giữ là chuỗi. Ở bản gốc, `closebuttoncaption=1` hay `closebuttoncaption=No` làm app crash, vì giá trị bị đọc thành số hoặc Boolean. Cũng nhờ vậy `beforeload=no` giờ được hiểu đúng là tắt.
@@ -53,6 +63,7 @@ Wrapper OutSystems tự truyền các option này. Khi gọi plugin trực tiế
   - `ToolbarHeight` nhận số hoặc chuỗi (`56`, `"56px"`, `"3.5rem"`), tối thiểu là 44.
   - `ToolbarHeightClass` đọc giá trị `height` được khai báo cho class trong CSS.
 - **Nút Đóng:** nằm bên phải trên cả hai nền tảng. `CloseButtonIcon` để dùng icon X thay cho chữ.
+- **Title:** input `Title` hiện chữ ở bên trái toolbar.
 - **JWT:** web lấy token bằng `MiniAppBridge.getToken()`. App trả token qua `AuthToken`, hoặc qua `OnTokenRequest` và `MiniApp_SetToken`. Origin của trang được kiểm tra ngay lúc giao token.
 - **HTTPS:** `Url` và `AllowedOrigins` bắt buộc là HTTPS. `AllowedOrigins` được quy về origin, và cũng là danh sách origin được xin quyền thiết bị.
 
@@ -60,8 +71,19 @@ Wrapper OutSystems tự truyền các option này. Khi gọi plugin trực tiế
 
 - Khai báo engine khớp với MABS: cordova-ios 7.1.1 và cordova-android 14.0.1.
 - Code Android compile với Android SDK 35 và 36.
-- Code iOS tới bản `7.0.1-os.3` compile với header cordova-ios 7.1.1 (target iOS 11 và 15).
-- **Phần iOS sửa trong `7.0.1-os.4` chưa được compile trên máy phát triển**, cần xác nhận qua bản build MABS.
+- Code iOS compile với header cordova-ios 7.1.1 (target iOS 11 và 15), không có warning.
+- App test (cordova-ios 7.1.1, chạy nguyên văn `Open.js`) đã được build và chạy trên simulator iOS 18.0 (iPhone 16 Pro) và iOS 26.2 (iPhone 17 Pro). Đo bằng pixel trên ảnh chụp:
+  - title cách mép trái 16pt, chữ X cách mép phải 16pt;
+  - chữ X 18×18pt, đúng màu `#FFFFFF`, căn giữa theo chiều dọc với toolbar;
+  - toolbar cao đúng `--header-size` (56pt);
+  - title dài bị cắt bằng "…" mà không đè lên nút;
+  - không còn đường kẻ mảnh, không còn nền kính.
+- App test Android (cordova-android 14.0.1, build bằng Gradle) đã chạy trên emulator Android 16 (API 36, màn 1080×2400, có tai thỏ):
+  - vùng status bar và tai thỏ có màu primary;
+  - title cách mép trái 15.6dp, chữ X cách mép phải 15.6dp (16dp sau khi làm tròn pixel), chữ X 18dp màu `#FFFFFF`;
+  - với nền vàng thì icon status bar màu tối;
+  - bấm nút X thì mini app đóng, và app nhận event `closed`.
+- **Chưa test:** thao tác bấm nút Đóng trên simulator iOS, và Android 15 trở xuống.
 
 ## 1. Publish plugin
 
@@ -69,11 +91,11 @@ Plugin được publish từ repo [khoado-rgb/cordova-plugin-inappbrowser](https
 
 ```sh
 git push origin master
-git tag 7.0.1-os.4
-git push origin 7.0.1-os.4
+git tag 7.0.1-os.5
+git push origin 7.0.1-os.5
 ```
 
-MABS lấy plugin theo tag, nên mỗi lần sửa plugin phải tạo tag mới (`7.0.1-os.5`, ...) và cập nhật URL trong Extensibility Configurations. Không sửa lại một tag đã dùng để build.
+MABS lấy plugin theo tag, nên mỗi lần sửa plugin phải tạo tag mới (`7.0.1-os.6`, ...) và cập nhật URL trong Extensibility Configurations. Không sửa lại một tag đã dùng để build.
 
 Nếu repo để private, MABS phải có quyền đọc repo. Khi đó dùng URL có token, hoặc để repo public.
 
@@ -84,7 +106,7 @@ Nếu repo để private, MABS phải có quyền đọc repo. Khi đó dùng UR
 ```json
 {
   "plugin": {
-    "url": "https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.4"
+    "url": "https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.5"
   }
 }
 ```
@@ -99,7 +121,7 @@ Mỗi action chỉ gồm một JavaScript node. Copy code từ file tương ứn
 | Action | Input | Output | Code |
 |---|---|---|---|
 | `MiniApp_IsAvailable` | – | `IsAvailable` (Boolean) | [client-actions/CheckPlugin.js](client-actions/CheckPlugin.js) |
-| `MiniApp_Open` | `Url` (Text, bắt buộc, HTTPS), `AllowedOrigins` (Text), `AllowedTypes` (Text), `CloseButtonText` (Text, mặc định `"Đóng"`), `CloseButtonIcon` (Boolean, mặc định `False`), `StatusBarColor` (Text), `ToolbarColor` (Text), `ToolbarHeight` (Integer hoặc Text), `ToolbarHeightClass` (Text), `AuthToken` (Text) | `IsOpened` (Boolean) | [client-actions/Open.js](client-actions/Open.js) |
+| `MiniApp_Open` | `Url` (Text, bắt buộc, HTTPS), `AllowedOrigins` (Text), `AllowedTypes` (Text), `Title` (Text), `CloseButtonText` (Text, mặc định `"Đóng"`), `CloseButtonIcon` (Boolean, mặc định `False`), `StatusBarColor` (Text), `ToolbarColor` (Text), `ToolbarHeight` (Integer hoặc Text), `ToolbarHeightClass` (Text), `AuthToken` (Text) | `IsOpened` (Boolean) | [client-actions/Open.js](client-actions/Open.js) |
 | `MiniApp_Close` | – | – | [client-actions/Close.js](client-actions/Close.js) |
 | `MiniApp_PostToWeb` | `Type` (Text, bắt buộc), `PayloadJson` (Text, mặc định `"{}"`) | `Success` (Boolean) | [client-actions/PostToWeb.js](client-actions/PostToWeb.js) |
 | `MiniApp_SetToken` | `Token` (Text) | `Success` (Boolean) | [client-actions/SetToken.js](client-actions/SetToken.js) |
@@ -115,6 +137,7 @@ Mỗi action chỉ gồm một JavaScript node. Copy code từ file tương ứn
     - Message từ app (`MiniApp_PostToWeb`, token) chỉ được giao khi trang chính đang ở một origin trong danh sách.
     - Chỉ trang ở một origin trong danh sách mới được xin quyền camera, micro và vị trí, và luôn phải được user đồng ý.
 - `AllowedTypes`: danh sách `type` mà web được phép gửi, ví dụ `openPayment,share`. Type `close` và `getToken` luôn được chấp nhận. Message có type ngoài danh sách sẽ bị bỏ qua.
+- `Title`: chữ hiện ở bên trái toolbar, ví dụ tên đối tác. Để trống thì không có title. Dấu phẩy và dấu `=` được thay bằng khoảng trắng, vì hai ký tự này dùng để tách các option. Title dùng cùng màu với nút Đóng, và bị cắt bằng "…" nếu dài quá chỗ trống.
 - `CloseButtonText`: không được chứa dấu phẩy.
 - Nút Đóng nằm **bên phải** toolbar trên cả iOS và Android. Wrapper tự truyền `lefttoright=yes` cho iOS; Android mặc định đã đặt nút bên phải.
 - `CloseButtonIcon`: `True` thì nút Đóng là icon X, cùng màu với chữ khi không dùng icon. Cả iOS và Android dùng chung một icon (khung 32pt/dp, chữ X 18pt/dp), nên nút có cùng kích thước trên hai nền tảng. Trên iOS 26, nút không có nền kính dạng viên thuốc. `CloseButtonText` khi đó không hiện ra mà chỉ là nhãn cho trình đọc màn hình, nên vẫn nên để "Đóng".
@@ -223,6 +246,8 @@ Màu:
 - [ ] Chiều cao toolbar bằng chiều cao header của app (mặc định 56). Thử thêm `ToolbarHeight: "64px"`: toolbar cao hơn, nút Đóng vẫn nằm giữa theo chiều dọc. `ToolbarHeight: "20px"` cho ra 44, và trên iOS nút không tràn ra ngoài toolbar.
 - [ ] `ToolbarHeightClass: "header-top"`: toolbar cao bằng phần header dưới status bar (56 với theme mặc định).
 - [ ] Nút Đóng nằm bên phải toolbar trên cả iOS và Android.
+- [ ] Chữ X (hoặc chữ "Đóng") cách mép phải 16pt/dp, bằng khoảng title cách mép trái, trên cả iOS và Android. Bấm vào thì đóng mini app.
+- [ ] `Title: "Đối tác ABC"`: title nằm bên trái, cách mép khoảng 16, căn giữa theo chiều dọc với nút Đóng, cùng màu với nút. Title rất dài thì bị cắt bằng "…" và không đè lên nút Đóng.
 - [ ] `CloseButtonIcon: True`: iOS và Android hiện icon X đúng màu và cùng kích thước (trên iOS 26 không có nền kính quanh nút), bấm vào thì đóng mini app. Bật VoiceOver/TalkBack: nút được đọc là "Đóng".
 - [ ] iOS: nếu chữ status bar không đổi màu, kiểm tra `Info.plist` của app. Nếu `UIViewControllerBasedStatusBarAppearance` là `NO`, iOS bỏ qua style riêng của InAppBrowser và dùng style chung của app.
 - [ ] Android 14 trở xuống: status bar màu primary, icon status bar đúng màu (trắng hoặc tối).

@@ -20,6 +20,15 @@
 -->
 # Release Notes
 
+## 7.0.1-os.5
+
+* feat: `toolbartitle` open option (iOS, Android) shows a title on the toolbar, on the side away from the close button, in the close button color, truncated when too long
+* fix(ios): the close button (icon or caption) is drawn over the toolbar background rather than as a toolbar item, so it sits 16pt from the edge on every iOS version, like the title on the other side, in its exact color: no toolbar margins, no iOS 26 vibrancy or glass capsule
+* fix(ios): no hairline along the toolbar on iOS 18 and older
+* fix(android): `statusbarcolor` now paints the status bar. The window attributes were copied before `setContentView` and set back after `show()`, which dropped the flags set in between, so the dialog was laid out below the status bar and display cutout. From Android 11 the dialog is drawn edge-to-edge, also over the display cutout, with transparent system bars, and the status bar spacer paints the area behind them; up to Android 10 the window draws the status bar color
+* fix: `closebuttonicon=yes` uses an opaque 18pt/dp X (was #333 at 60% alpha, so a white tint showed light); on Android its glyph and a caption also end 16dp from the edge
+* feat(outsystems): `Title` input on `MiniApp_Open`
+
 ## 7.0.1-os.4
 
 * fix(ios): `toolbarheight` below the toolbar's own height no longer lets the buttons stick out of the toolbar; the background grows to the bar instead

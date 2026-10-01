@@ -51,6 +51,7 @@
         self.closebuttonicon = NO;
         self.toolbarheight = 0;
         self.permissionorigins = nil;
+        self.toolbartitle = nil;
     }
 
     return self;

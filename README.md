@@ -50,11 +50,11 @@ This repository is a fork of [apache/cordova-plugin-inappbrowser](https://github
 
 Install a tagged release from Git:
 
-    cordova plugin add https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.4
+    cordova plugin add https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.5
 
 Changes from the upstream plugin:
 
-- New `open` options for Android and iOS: `statusbarcolor`, `statusbarstyle`, `closebuttonicon`, `toolbarheight` and `permissionorigins`, described under [cordova.InAppBrowser.open](#cordovainappbrowseropen).
+- New `open` options for Android and iOS: `statusbarcolor`, `statusbarstyle`, `closebuttonicon`, `toolbarheight`, `toolbartitle` and `permissionorigins`, described under [cordova.InAppBrowser.open](#cordovainappbrowseropen).
 - Android no longer grants the camera, microphone or location to any page. Pages on a `permissionorigins` origin may ask; the user confirms in a dialog, then Android asks for the runtime permission if the app does not have it yet.
 - On iOS 15+ the camera and microphone are limited to `permissionorigins` origins, and WebKit asks the user.
 - Android 15+ (targetSdk 35): the toolbar, web view and keyboard are kept clear of the system bars, as the browser is drawn edge-to-edge.
@@ -134,8 +134,9 @@ instance, or the system browser.
 
     - __statusbarcolor__: set to a hex color string, for example `#1068EB`, to paint the status bar area. On Android 15+ the plugin paints this area itself, as `setStatusBarColor` has no effect there.
     - __statusbarstyle__: set to `lightcontent` (light text and icons, for dark colors) or `darkcontent` (dark text and icons, for light colors). On iOS it takes precedence over the `InAppBrowserStatusBarStyle` preference.
-    - __closebuttonicon__: set to `yes` to show the close button as an X icon, the same icon on both platforms (32pt/dp). __closebuttoncaption__ then only labels it for VoiceOver and TalkBack. On iOS 26 the button has no glass background.
+    - __closebuttonicon__: set to `yes` to show the close button as an 18pt/dp X icon, the same on both platforms and tinted with __closebuttoncolor__. __closebuttoncaption__ then only labels it for VoiceOver and TalkBack. On iOS a caption or icon close button is drawn over the toolbar, 16pt from the edge like the title, with no toolbar margins, vibrancy or glass background.
     - __toolbarheight__: toolbar height in dp (Android) or points (iOS), without the safe area. On iOS it is never lower than the toolbar's own height. On Android it only has effect if location is set to `yes`.
+    - __toolbartitle__: text shown on the toolbar, on the side away from the close button, 16pt/dp from the edge, in the close button color, and truncated when too long. On Android it only shows if __hideurlbar__ is set to `yes`, as it takes the place of the URL bar.
     - __permissionorigins__: origins whose pages may ask for the camera, microphone and location, separated by `|`, for example `https://a.example.com|https://b.example.com`. Without it, any origin may ask. On Android the user always confirms in a dialog first; on iOS 15+ the camera and microphone are limited to these origins and WebKit asks the user.
 
     Android supports these additional options:
