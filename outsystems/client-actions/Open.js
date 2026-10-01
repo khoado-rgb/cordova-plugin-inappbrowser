@@ -25,8 +25,8 @@
 // Output:  IsOpened (Boolean)
 //
 // Results are delivered as DOM events on `document`, picked up by the MiniAppEvents block:
-//   miniapp:loaded       {url}   - URLs in events have no #fragment, and the values of token-like
-//                                  query parameters (code, token, access_token, ...) are hidden
+//   miniapp:loaded       {url}   - URLs in events have no #fragment or user:password@, and the values
+//                                  of token-like query parameters (code, token, access_token, ...) are hidden
 //   miniapp:message      {type, payloadJson}
 //   miniapp:tokenrequest {}  - the web needs a (new) token, answer with MiniApp_SetToken
 //   miniapp:closed       {}
@@ -126,13 +126,16 @@ function classHeight(classes) {
     return toPx(height);
 }
 
-// For the events the app may log: no fragment, and the values of query parameters that look like
-// credentials (OAuth code, tokens, passwords, signatures) replaced. The rest of the URL is kept as is.
+// For the events the app may log: no fragment and no user:password@, and the values of query
+// parameters that look like credentials (OAuth code, tokens, passwords, signatures) replaced. The
+// rest of the URL is kept as is.
 var SENSITIVE_PARAM = /token|secret|password|passwd|session|signature|^(code|jwt|sig|otp|key|api_?key|auth)$/i;
 function redact(url) {
     try {
         var parsed = new URL(url);
         parsed.hash = '';
+        parsed.username = '';
+        parsed.password = '';
         var sensitive = [];
         parsed.searchParams.forEach(function (value, name) {
             if (SENSITIVE_PARAM.test(name) && sensitive.indexOf(name) === -1) sensitive.push(name);

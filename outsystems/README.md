@@ -17,7 +17,7 @@ Bản hiện tại: `7.0.1-os.6`. Chi tiết từng bản ở [RELEASENOTES.md](
 | `toolbarheight=<số>` | iOS, Android | Chiều cao toolbar, tính bằng dp trên Android và pt trên iOS, không gồm safe area. Trên iOS, toolbar không thấp hơn chiều cao thật của thanh. |
 | `toolbartitle=<chữ>` | iOS, Android | Title trên toolbar, ở phía không có nút Đóng (với wrapper là bên trái), cách mép 16pt/dp. Cỡ 17, chữ đậm vừa, cùng màu nút Đóng, bị cắt bằng "…" nếu quá dài. Trên Android chỉ hiện khi thanh URL bị ẩn (`hideurlbar=yes`). |
 | `permissionorigins=<origin>\|<origin>` | iOS, Android | Các origin HTTPS được xin quyền camera, micro và vị trí. Mục không phải HTTPS bị bỏ, nên nếu không còn mục nào thì mọi trang đều bị từ chối. Không truyền thì mọi origin đều được xin, nhưng luôn phải được user đồng ý. |
-| `httpsonly=yes` | iOS, Android | Chặn trang chính điều hướng sang `http:` (link, redirect, `window.open`) và báo `loaderror` mã `-1`. Iframe không bị ảnh hưởng. Android không huỷ được lần submit form, back hay reload sang `http:` (Android 6 trở xuống: mọi lần điều hướng sang `http:`), nên dừng trang lại và hiện trang trắng. |
+| `httpsonly=yes` | iOS, Android | Chặn trang chính điều hướng sang `http:` (link, redirect, `window.open`) và báo `loaderror` mã `-1`. Iframe không bị ảnh hưởng. Android không huỷ được lần submit form, back hay reload sang `http:` (Android 6 trở xuống: mọi lần điều hướng sang `http:`). Khi đó plugin tự trả về một trang rỗng, nên không có gì được gửi qua `http`, rồi quay về trang trước đó (không có trang trước thì hiện trang trắng). |
 
 Wrapper OutSystems tự truyền các option này. Khi gọi plugin trực tiếp thì truyền tay.
 
@@ -68,7 +68,7 @@ Wrapper OutSystems tự truyền các option này. Khi gọi plugin trực tiế
 - **JWT:** web lấy token bằng `MiniAppBridge.getToken()`. App trả token qua `AuthToken`, hoặc qua `OnTokenRequest` và `MiniApp_SetToken`. Origin của trang được kiểm tra ngay lúc giao token.
 - **HTTPS:** `Url` và `AllowedOrigins` bắt buộc là HTTPS. `AllowedOrigins` được quy về origin, và cũng là danh sách origin được xin quyền thiết bị. Wrapper truyền `httpsonly=yes`, nên trang chính không chuyển sang được trang `http:`.
 - **Kiểm tra người gửi:** message được nhận khi origin của trang gửi (plugin gửi kèm) nằm trong `AllowedOrigins`. Chỉ khi WebView Android cũ không gửi kèm origin thì wrapper mới dùng URL vừa tải gần nhất như trước.
-- **URL trong event:** `OnLoaded` và `OnError` nhận URL đã bỏ phần `#...`, và giá trị của các tham số giống thông tin đăng nhập (`code`, `token`, `access_token`, `id_token`, `password`, ...) được thay bằng `hidden`, để app có ghi log cũng không lộ token.
+- **URL trong event:** `OnLoaded` và `OnError` nhận URL đã bỏ phần `#...` và `user:password@`, và giá trị của các tham số giống thông tin đăng nhập (`code`, `token`, `access_token`, `id_token`, `password`, ...) được thay bằng `hidden`, để app có ghi log cũng không lộ token.
 - **Android:** wrapper truyền thêm `shouldPauseOnSuspend=yes`, để WebView tạm dừng (animation, vị trí) khi app chạy nền.
 
 ### Đã kiểm tra
@@ -96,6 +96,7 @@ Wrapper OutSystems tự truyền các option này. Khi gọi plugin trực tiế
   - link `http://example.com/?code=secret#frag` bị chặn, trang giữ nguyên, `OnError` nhận URL `http://example.com/?code=hidden`;
   - `OnLoaded` của `https://example.com/?code=abc&x=1#f` nhận `https://example.com/?code=hidden&x=1`;
   - `closebuttonsize=100` cho chữ X 40pt/dp, `closebuttonsize=8` cho chữ X 8pt/dp, cả hai vẫn cách mép phải 16.
+  - `httpsonly` với form `POST` tới `http:` (Android 16, form submit bằng script và bằng thao tác bấm thật): app chỉ nhận một `OnError`, không có request nào đi qua `http`, trang quay về trang `https` trước đó; `history.forward()` vào lại mục `http:` thì bị chặn lại và quay về;
   - bridge gọi sớm: script inline (lúc trang còn `loading`) và handler `DOMContentLoaded` gửi được message, trước khi trang tải xong, và `getToken()` gọi lúc đó vẫn nhận đúng token.
 - **Chưa test:** thao tác bấm nút Đóng trên simulator iOS; Android 15 trở xuống (trong đó có `httpsonly` trên Android 6 trở xuống); WebView Android cũ không có `WebMessageListener` (đường dự phòng `JavascriptInterface`).
 
@@ -179,7 +180,7 @@ Mỗi action chỉ gồm một JavaScript node. Copy code từ file tương ứn
 Block này nhận kết quả từ mini app và đẩy lên screen chứa nó qua các event.
 
 - **Events** (Is Mandatory = No):
-  - `OnLoaded(Url: Text)`: URL không có `#...`, và các tham số giống token bị thay bằng `hidden`.
+  - `OnLoaded(Url: Text)`: URL không có `#...` hay `user:password@`, và các tham số giống token bị thay bằng `hidden`.
   - `OnMessage(Type: Text, PayloadJson: Text)`
   - `OnTokenRequest()`
   - `OnClosed()`

@@ -63,6 +63,8 @@ import android.webkit.GeolocationPermissions;
 import android.webkit.HttpAuthHandler;
 import android.webkit.JavascriptInterface;
 import android.webkit.SslErrorHandler;
+import android.webkit.WebBackForwardList;
+import android.webkit.WebHistoryItem;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -96,6 +98,7 @@ import org.apache.cordova.PluginResult;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.ByteArrayInputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -1812,12 +1815,17 @@ public class InAppBrowser extends CordovaPlugin {
         }
     }
 
+    // OutSystems fork: with httpsonly, an http URL must not load.
+    private boolean isInsecure(String url) {
+        return httpsOnly && url != null && url.regionMatches(true, 0, "http:", 0, 5);
+    }
+
     /**
      * OutSystems fork: with httpsonly, true for an http URL, which is then reported as a loaderror
      * and must not load.
      */
     private boolean blockInsecure(String url) {
-        if (!httpsOnly || url == null || !url.regionMatches(true, 0, "http:", 0, 5)) {
+        if (!isInsecure(url)) {
             return false;
         }
         LOG.e(LOG_TAG, "httpsonly: blocked an http page");
@@ -1886,6 +1894,8 @@ public class InAppBrowser extends CordovaPlugin {
         CordovaWebView webView;
         String beforeload;
         boolean waitForBeforeload;
+        // OutSystems fork: httpsonly stopped an http page and is showing about:blank instead.
+        private boolean blankingInsecurePage = false;
 
         /**
          * Constructor.
@@ -2090,6 +2100,12 @@ public class InAppBrowser extends CordovaPlugin {
          */
         @Override
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+            // OutSystems fork: httpsonly answers an http page itself, with an empty one, when
+            // shouldOverrideUrlLoading could not cancel it (form post, back, reload, Android 6 and
+            // older): nothing goes over http and no http content runs. onPageStarted then leaves it.
+            if (request.isForMainFrame() && isInsecure(request.getUrl().toString())) {
+                return new WebResourceResponse("text/plain", "utf-8", new ByteArrayInputStream(new byte[0]));
+            }
             return shouldInterceptRequest(request.getUrl().toString(), super.shouldInterceptRequest(view, request), request.getMethod());
         }
 
@@ -2105,15 +2121,44 @@ public class InAppBrowser extends CordovaPlugin {
          * @param favicon
          */
         @Override
-        public void onPageStarted(WebView view, String url, Bitmap favicon) {
+        public void onPageStarted(final WebView view, String url, Bitmap favicon) {
             super.onPageStarted(view, url, favicon);
             // OutSystems fork: httpsonly, for what shouldOverrideUrlLoading does not see (POST, back,
             // reload, and before Android 7 any navigation).
             if (blockInsecure(url)) {
+                WebBackForwardList history = view.copyBackForwardList();
+                WebHistoryItem current = history.getCurrentItem();
                 view.stopLoading();
-                view.loadUrl("about:blank");
+                if (current == null || !url.equals(current.getUrl())) {
+                    // Not in the history yet: the page before is still shown.
+                    return;
+                }
+                // Back to the page before, so Back and Forward never get stuck on a blank page; a
+                // blank page only when there is none. With history.back() from the page, as
+                // goBack() and goBackOrForward() skip the pages that navigated without a user
+                // gesture (Chromium history intervention), and may then not move.
+                // Posted, once this page has committed.
+                final boolean hasPageBefore = history.getCurrentIndex() > 0;
+                if (!hasPageBefore) {
+                    blankingInsecurePage = true;
+                }
+                view.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (hasPageBefore) {
+                            view.evaluateJavascript("history.back()", null);
+                        } else {
+                            view.loadUrl("about:blank");
+                        }
+                    }
+                });
                 return;
             }
+            // Neither that page nor the blank one shown instead raise events: the loaderror says it all.
+            if (blankingInsecurePage && "about:blank".equals(url)) {
+                return;
+            }
+            blankingInsecurePage = false;
             String newloc = "";
             if (url.startsWith("http:") || url.startsWith("https:") || url.startsWith("file:")) {
                 newloc = url;
@@ -2149,6 +2194,16 @@ public class InAppBrowser extends CordovaPlugin {
                 this.waitForBeforeload = true;
             }
 
+            // OutSystems fork: no loadstop for an http page httpsonly stopped, nor for the blank page
+            // shown instead.
+            if (isInsecure(url)) {
+                return;
+            }
+            if (blankingInsecurePage && "about:blank".equals(url)) {
+                blankingInsecurePage = false;
+                return;
+            }
+
             // Set the namespace for postMessage()
             injectDeferredObject("window.webkit={messageHandlers:{cordova_iab:cordova_iab}}", null);
 
@@ -2176,6 +2231,11 @@ public class InAppBrowser extends CordovaPlugin {
             // Ensure future navigations can still trigger beforeload after an error.
             if (beforeload != null && !beforeload.isEmpty()) {
                 this.waitForBeforeload = true;
+            }
+
+            // OutSystems fork: an http page httpsonly stopped was already reported.
+            if (isInsecure(failingUrl)) {
+                return;
             }
 
             try {

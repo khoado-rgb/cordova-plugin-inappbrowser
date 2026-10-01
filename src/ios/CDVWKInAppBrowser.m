@@ -558,7 +558,7 @@ static UIBarButtonSystemItem CDVWKInAppBrowserCloseButtonSystemItem(void)
         NSLog(@"httpsonly: blocked an http page");
         if (self.callbackId != nil) {
             CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
-                                                          messageAsDictionary:@{@"type":@"loaderror", @"url":url.absoluteString, @"code": @"-1", @"message": @"Only https pages may load (httpsonly)"}];
+                                                          messageAsDictionary:@{@"type":@"loaderror", @"url":url.absoluteString, @"code": @(-1), @"message": @"Only https pages may load (httpsonly)"}];
             [pluginResult setKeepCallbackAsBool:YES];
             [self.commandDelegate sendPluginResult:pluginResult callbackId:self.callbackId];
         }
