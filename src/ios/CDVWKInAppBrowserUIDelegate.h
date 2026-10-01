@@ -25,8 +25,13 @@
 }
 
 @property (nonatomic, copy) NSString *title;
+// OutSystems fork: origins whose pages may ask for the camera and microphone; nil = any origin
+@property (nonatomic, copy) NSArray<NSString *> *permissionOrigins;
 
 - (instancetype)initWithTitle:(NSString *)title;
 - (void)setViewController:(UIViewController *)viewController;
+
+// Origins (scheme://host[:port]) of a "|" separated list of URLs; invalid entries are dropped.
++ (NSArray<NSString *> *)originsFromList:(NSString *)list;
 
 @end

@@ -1,7 +1,9 @@
 // Client action: MiniApp_Open
-// Inputs:  Url (Text, mandatory)
-//          AllowedOrigins (Text) - comma separated, e.g. "https://a.partner.com,https://pay.partner.com".
-//                                  Empty = only the origin of Url.
+// Inputs:  Url (Text, mandatory) - must be https.
+//          AllowedOrigins (Text) - comma separated https origins, e.g. "https://a.partner.com,https://pay.partner.com".
+//                                  Empty = only the origin of Url. Pages on these origins may exchange
+//                                  messages with the app, get the token and ask for the camera,
+//                                  microphone and location (the user is asked first).
 //          AllowedTypes (Text)   - comma separated message types the web may send, e.g. "openPayment,share".
 //                                  "close" and "getToken" are always allowed.
 //          CloseButtonText (Text, default "Đóng") - must not contain commas.
@@ -35,6 +37,16 @@ function splitList(text) {
 
 function originOf(url) {
     try { return new URL(url).origin; } catch (e) { return ''; }
+}
+
+// The origin of an https URL; '' for anything else (http, data:, file:, invalid).
+function httpsOrigin(url) {
+    try {
+        var parsed = new URL(url);
+        return parsed.protocol === 'https:' ? parsed.origin : '';
+    } catch (e) {
+        return '';
+    }
 }
 
 // Any CSS color (hex, rgb(), hsl(), name) as #RRGGBB, the only format the native side reads.
@@ -132,10 +144,28 @@ if (window.__miniApp) {
     return;
 }
 
+// Only https pages get the token and the device permissions.
 var url = $parameters.Url;
-var allowedOrigins = splitList($parameters.AllowedOrigins);
+if (!httpsOrigin(url)) {
+    emit('error', { message: 'Url must be an https URL' });
+    return;
+}
+var allowedOrigins = [];
+var invalidOrigins = [];
+splitList($parameters.AllowedOrigins).forEach(function (entry) {
+    var origin = httpsOrigin(entry);
+    if (origin) {
+        allowedOrigins.push(origin);
+    } else {
+        invalidOrigins.push(entry);
+    }
+});
+if (invalidOrigins.length > 0) {
+    emit('error', { message: 'AllowedOrigins must be https origins: ' + invalidOrigins.join(' ') });
+    return;
+}
 if (allowedOrigins.length === 0) {
-    allowedOrigins = [originOf(url)];
+    allowedOrigins = [httpsOrigin(url)];
 }
 var allowedTypes = splitList($parameters.AllowedTypes);
 var currentUrl = url;
@@ -166,13 +196,16 @@ var common = 'toolbarcolor=' + toolbarColor +
     ',navigationbuttoncolor=' + buttonColor +
     ',closebuttoncaption=' + closeText +
     ($parameters.CloseButtonIcon ? ',closebuttonicon=yes' : '') +
+    ',permissionorigins=' + allowedOrigins.join('|') +
     ',hidenavigationbuttons=yes';
 
+// The close button goes on the right: the Android default, lefttoright=yes on iOS
+// (on Android lefttoright=yes would move it to the left instead).
 var options = cordova.platformId === 'android'
     // location=yes is required for toolbarcolor; hideurlbar hides the URL but keeps the toolbar.
     // fullscreen=no keeps the app status bar visible (default hides it).
     ? 'location=yes,hideurlbar=yes,fullscreen=no,zoom=no,hardwareback=yes,' + common
-    : 'location=no,toolbar=yes,toolbarposition=top,toolbartranslucent=no,presentationstyle=fullscreen,' + common;
+    : 'location=no,toolbar=yes,toolbarposition=top,toolbartranslucent=no,presentationstyle=fullscreen,lefttoright=yes,' + common;
 
 var ref = cordova.InAppBrowser.open(url, '_blank', options);
 

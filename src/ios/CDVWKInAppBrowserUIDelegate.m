@@ -19,7 +19,49 @@
 
 #import "CDVWKInAppBrowserUIDelegate.h"
 
+// scheme://host[:port] without the default port, like window.location.origin
+static NSString *CDVWKInAppBrowserOrigin(NSString *scheme, NSString *host, NSInteger port)
+{
+    if (scheme.length == 0 || host.length == 0) {
+        return @"";
+    }
+    NSString *lowerScheme = scheme.lowercaseString;
+    BOOL defaultPort = port <= 0 ||
+        ([lowerScheme isEqualToString:@"https"] && port == 443) ||
+        ([lowerScheme isEqualToString:@"http"] && port == 80);
+    if (defaultPort) {
+        return [NSString stringWithFormat:@"%@://%@", lowerScheme, host.lowercaseString];
+    }
+    return [NSString stringWithFormat:@"%@://%@:%ld", lowerScheme, host.lowercaseString, (long)port];
+}
+
 @implementation CDVWKInAppBrowserUIDelegate
+
++ (NSArray<NSString *> *)originsFromList:(NSString *)list
+{
+    NSMutableArray<NSString *> *origins = [NSMutableArray array];
+    for (NSString *entry in [list componentsSeparatedByString:@"|"]) {
+        NSString *trimmed = [entry stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+        NSURLComponents *url = [NSURLComponents componentsWithString:trimmed];
+        NSString *origin = CDVWKInAppBrowserOrigin(url.scheme, url.host, url.port.integerValue);
+        if (origin.length > 0) {
+            [origins addObject:origin];
+        }
+    }
+    return origins;
+}
+
+// OutSystems fork: camera and microphone only for pages on a permissionorigins origin, and
+// WebKit then asks the user. Before iOS 15 there is no such hook and WebKit always asks.
+- (void)webView:(WKWebView *)webView requestMediaCapturePermissionForOrigin:(WKSecurityOrigin *)origin
+                                                          initiatedByFrame:(WKFrameInfo *)frame
+                                                                      type:(WKMediaCaptureType)type
+                                                           decisionHandler:(void (^)(WKPermissionDecision decision))decisionHandler API_AVAILABLE(ios(15.0))
+{
+    NSString *pageOrigin = CDVWKInAppBrowserOrigin(origin.protocol, origin.host, origin.port);
+    BOOL allowed = pageOrigin.length > 0 && (self.permissionOrigins == nil || [self.permissionOrigins containsObject:pageOrigin]);
+    decisionHandler(allowed ? WKPermissionDecisionPrompt : WKPermissionDecisionDeny);
+}
 
 - (instancetype)initWithTitle:(NSString *)title
 {

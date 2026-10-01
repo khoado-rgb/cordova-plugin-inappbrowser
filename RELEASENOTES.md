@@ -20,6 +20,14 @@
 -->
 # Release Notes
 
+## 7.0.1-os.3
+
+* fix(android): ask the user before granting the camera, microphone or location to a page, and only for origins in the new `permissionorigins` option; the runtime permission is requested when missing (was: every request from any page granted)
+* feat(ios): camera and microphone only for `permissionorigins` origins on iOS 15+, WebKit then asks the user
+* fix(android): destroy the WebView when the browser closes or reopens, and the transport WebView of `window.open` once navigation moved on
+* fix(ios): ignore script messages from iframes; do not log the script or result of `executeScript`; remove the script message handler on exit
+* feat(outsystems): `Url` and `AllowedOrigins` must be https; `AllowedOrigins` entries are reduced to origins and passed as `permissionorigins`; the close button is on the right on iOS too
+
 ## 7.0.1-os.2
 
 * feat: `closebuttonicon` open option (iOS, Android) to show the close button as an X icon; `closebuttoncaption` then labels it for VoiceOver/TalkBack

@@ -53,6 +53,8 @@
 @property (nonatomic, assign) BOOL closebuttonicon;
 // OutSystems fork: toolbar height in points, without the safe area; 0 = system height
 @property (nonatomic, assign) double toolbarheight;
+// OutSystems fork: origins whose pages may ask for the camera and microphone, separated by "|"; nil = any origin
+@property (nonatomic, copy) NSString *permissionorigins;
 
 + (CDVInAppBrowserOptions *)parseOptions:(NSString *)options;
 

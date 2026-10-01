@@ -2,7 +2,7 @@
 
 Bản fork của [apache/cordova-plugin-inappbrowser](https://github.com/apache/cordova-plugin-inappbrowser) tại nhánh `master` (7.0.1-dev), dùng để mở website của đối tác như một mini app trong app mobile OutSystems. Kèm theo là code cho module wrapper trong OutSystems và script cho phía đối tác.
 
-Khác biệt so với bản gốc (`7.0.1-os.2`):
+Khác biệt so với bản gốc (`7.0.1-os.3`):
 
 - **Option mới `statusbarcolor` và `statusbarstyle`** (iOS và Android). `statusbarcolor=#RRGGBB` là màu nền vùng status bar. `statusbarstyle=lightcontent|darkcontent` là màu chữ và icon status bar. Option này áp dụng cho từng lần mở và được ưu tiên hơn preference `InAppBrowserStatusBarStyle`.
 - **Option mới `closebuttonicon=yes`** (iOS và Android): nút Đóng là icon X thay cho chữ. Khi đó `closebuttoncaption` chỉ dùng làm nhãn cho VoiceOver/TalkBack. Ở bản gốc, iOS dưới 26 luôn hiện chữ ("Done" hoặc caption).
@@ -12,6 +12,11 @@ Khác biệt so với bản gốc (`7.0.1-os.2`):
 - **iOS:** khi iOS kill WebContent process của mini app (thường do thiếu bộ nhớ), plugin báo `loaderror` rồi tự tải lại trang. Nếu process lại bị kill trong vòng 10 giây thì không tải lại nữa, để tránh vòng lặp. Bản gốc chỉ để trang trắng.
 - **iOS:** option dạng chuỗi (caption, màu, ...) luôn được giữ là chuỗi. Ở bản gốc, `closebuttoncaption=1` hay `closebuttoncaption=No` làm app crash, vì giá trị bị đọc thành số hoặc Boolean. Cũng nhờ vậy `beforeload=no` giờ được hiểu đúng là tắt.
 - **Android 11:** màu icon status bar được đặt bằng cả `WindowInsetsController` lẫn cờ kiểu cũ, vì trên một số máy Android 11 chỉ một cách là không đủ.
+- **Quyền camera, micro và vị trí:** trang chỉ được cấp quyền sau khi user đồng ý, và chỉ khi trang ở một origin trong option `permissionorigins` (các origin cách nhau bằng `|`; wrapper truyền `AllowedOrigins` vào đây). Bản gốc trên Android tự cấp mọi quyền cho mọi trang.
+  - **Android:** hiện hộp thoại "partner.com muốn dùng camera của bạn". Mỗi origin chỉ hỏi một lần cho tới khi đóng mini app. Nếu app chưa có quyền runtime của Android thì hệ thống hỏi tiếp. Vị trí cũng được hỏi và nhớ như vậy. Chỉ camera, micro và vị trí được cấp; protected media và MIDI luôn bị từ chối.
+  - **iOS 15 trở lên:** camera và micro chỉ được xin khi trang thuộc `permissionorigins`, sau đó WebKit tự hỏi user. Vị trí và iOS dưới 15 không có API để lọc theo origin, nên WebKit hỏi user như bình thường.
+- **Android:** WebView được destroy khi đóng mini app và khi mở lại, còn WebView tạm cho `window.open` được destroy ngay sau khi chuyển điều hướng về. Bản gốc giữ chúng tới khi GC chạy.
+- **iOS:** chỉ nhận message từ trang chính, bỏ qua message từ iframe. Không ghi script hay kết quả của `executeScript` vào log (script giao token có chứa JWT). Message handler được gỡ đúng cách khi đóng.
 - Plugin yêu cầu cordova-android ≥ 10.0.0, vì code dùng API 30 (`WindowInsets.Type`).
 
 Đã kiểm tra khai báo engine với MABS: cordova-ios 7.1.1 và cordova-android 14.0.1. Code native đã compile với header cordova-ios 7.1.1 và Android SDK 35.
@@ -24,11 +29,11 @@ Plugin được publish từ repo [khoado-rgb/cordova-plugin-inappbrowser](https
 
 ```sh
 git push origin master
-git tag 7.0.1-os.2
-git push origin 7.0.1-os.2
+git tag 7.0.1-os.3
+git push origin 7.0.1-os.3
 ```
 
-MABS lấy plugin theo tag, nên mỗi lần sửa plugin phải tạo tag mới (`7.0.1-os.3`, ...) và cập nhật URL trong Extensibility Configurations. Không sửa lại một tag đã dùng để build.
+MABS lấy plugin theo tag, nên mỗi lần sửa plugin phải tạo tag mới (`7.0.1-os.4`, ...) và cập nhật URL trong Extensibility Configurations. Không sửa lại một tag đã dùng để build.
 
 Nếu repo để private, MABS phải có quyền đọc repo. Khi đó dùng URL có token, hoặc để repo public.
 
@@ -39,7 +44,7 @@ Nếu repo để private, MABS phải có quyền đọc repo. Khi đó dùng UR
 ```json
 {
   "plugin": {
-    "url": "https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.2"
+    "url": "https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.3"
   }
 }
 ```
@@ -54,18 +59,24 @@ Mỗi action chỉ gồm một JavaScript node. Copy code từ file tương ứn
 | Action | Input | Output | Code |
 |---|---|---|---|
 | `MiniApp_IsAvailable` | – | `IsAvailable` (Boolean) | [client-actions/CheckPlugin.js](client-actions/CheckPlugin.js) |
-| `MiniApp_Open` | `Url` (Text, bắt buộc), `AllowedOrigins` (Text), `AllowedTypes` (Text), `CloseButtonText` (Text, mặc định `"Đóng"`), `CloseButtonIcon` (Boolean, mặc định `False`), `StatusBarColor` (Text), `ToolbarColor` (Text), `ToolbarHeight` (Integer hoặc Text), `ToolbarHeightClass` (Text), `AuthToken` (Text) | `IsOpened` (Boolean) | [client-actions/Open.js](client-actions/Open.js) |
+| `MiniApp_Open` | `Url` (Text, bắt buộc, HTTPS), `AllowedOrigins` (Text), `AllowedTypes` (Text), `CloseButtonText` (Text, mặc định `"Đóng"`), `CloseButtonIcon` (Boolean, mặc định `False`), `StatusBarColor` (Text), `ToolbarColor` (Text), `ToolbarHeight` (Integer hoặc Text), `ToolbarHeightClass` (Text), `AuthToken` (Text) | `IsOpened` (Boolean) | [client-actions/Open.js](client-actions/Open.js) |
 | `MiniApp_Close` | – | – | [client-actions/Close.js](client-actions/Close.js) |
 | `MiniApp_PostToWeb` | `Type` (Text, bắt buộc), `PayloadJson` (Text, mặc định `"{}"`) | `Success` (Boolean) | [client-actions/PostToWeb.js](client-actions/PostToWeb.js) |
 | `MiniApp_SetToken` | `Token` (Text) | `Success` (Boolean) | [client-actions/SetToken.js](client-actions/SetToken.js) |
 
 Ý nghĩa các input của `MiniApp_Open`:
 
-- `AllowedOrigins`: danh sách origin, cách nhau bằng dấu phẩy. Để trống thì chỉ gồm origin của `Url`. Cần khai báo thêm nếu web đối tác redirect sang domain khác. Danh sách này dùng cho cả hai chiều:
-  - Message từ web chỉ được nhận khi trang chính đang ở một origin trong danh sách.
-  - Message từ app (`MiniApp_PostToWeb`, token) chỉ được giao khi trang chính đang ở một origin trong danh sách.
+- `Url`: bắt buộc là `https://`. Với `http:`, `data:`, `file:` hay URL sai, mini app không mở và `OnError` được bắn.
+- `AllowedOrigins`: danh sách origin HTTPS, cách nhau bằng dấu phẩy. Để trống thì chỉ gồm origin của `Url`. Cần khai báo thêm nếu web đối tác redirect sang domain khác.
+  - Mỗi mục được quy về origin, nên `https://partner.com/`, `https://partner.com/app` hay `https://Partner.com` đều hiểu là `https://partner.com`.
+  - Nếu có mục không phải HTTPS (ví dụ `http://...`), mini app không mở và `OnError` liệt kê các mục sai.
+  - Danh sách này dùng cho ba việc:
+    - Message từ web chỉ được nhận khi trang chính đang ở một origin trong danh sách.
+    - Message từ app (`MiniApp_PostToWeb`, token) chỉ được giao khi trang chính đang ở một origin trong danh sách.
+    - Chỉ trang ở một origin trong danh sách mới được xin quyền camera, micro và vị trí, và luôn phải được user đồng ý.
 - `AllowedTypes`: danh sách `type` mà web được phép gửi, ví dụ `openPayment,share`. Type `close` và `getToken` luôn được chấp nhận. Message có type ngoài danh sách sẽ bị bỏ qua.
 - `CloseButtonText`: không được chứa dấu phẩy.
+- Nút Đóng nằm **bên phải** toolbar trên cả iOS và Android. Wrapper tự truyền `lefttoright=yes` cho iOS; Android mặc định đã đặt nút bên phải.
 - `CloseButtonIcon`: `True` thì nút Đóng là icon X (iOS dùng SF Symbol `xmark`, Android dùng icon có sẵn của plugin), cùng màu với chữ khi không dùng icon. `CloseButtonText` khi đó không hiện ra mà chỉ là nhãn cho trình đọc màn hình, nên vẫn nên để "Đóng".
 - `StatusBarColor`: màu CSS bất kỳ, ví dụ `#1068EB`, `rgb(16,104,235)` hay `red`. Để trống thì dùng màu primary của app.
 - `ToolbarColor`: màu CSS bất kỳ. Để trống thì dùng màu của status bar. Truyền `"#FFFFFF"` nếu muốn toolbar trắng. Khi đó nút Đóng dùng màu primary.
@@ -155,7 +166,7 @@ Danh sách `type` và format `payload` phải được hai bên thống nhất t
 
 - **Không dùng `clearcache` hay `clearsessioncache`.** InAppBrowser dùng chung kho cookie với WebView của app. Xoá cookie ở đây sẽ làm app OutSystems mất phiên đăng nhập.
 - Vì dùng chung cookie, **session của đối tác vẫn còn sau khi user logout khỏi app.** Khi logout, phải huỷ session phía đối tác, qua API server-to-server hoặc URL logout của họ.
-- Coi mọi message từ web là input không tin cậy. Việc kiểm tra origin chỉ áp cho trang chính, không chặn được iframe bên trong trang. Với thanh toán và kết quả giao dịch, luôn xác nhận qua backend (server của mình gọi server đối tác), không tin số liệu do web gửi lên.
+- Coi mọi message từ web là input không tin cậy. Trên iOS, message từ iframe bị bỏ qua. Trên Android, iframe trong trang vẫn gửi được message, vì `JavascriptInterface` không cho biết frame gửi. Với thanh toán và kết quả giao dịch, luôn xác nhận qua backend (server của mình gọi server đối tác), không tin số liệu do web gửi lên.
 - **JWT:**
   - Không bao giờ đưa JWT vào URL, vì URL bị lưu trong lịch sử, log server và header `Referer`. Dùng `AuthToken`/`getToken` hoặc SSO bằng code.
   - JWT cho đối tác nên do backend của app phát riêng cho từng đối tác. Token sống ngắn (5–15 phút), `aud` là đối tác, chỉ chứa claim cần thiết, và ký bất đối xứng (RS256/ES256) để đối tác verify bằng public key. Không đưa session token hay refresh token của app.
@@ -171,6 +182,7 @@ Màu:
 - [ ] iOS với primary sáng (thử `StatusBarColor: "#FFD600"`): chữ status bar và nút Đóng màu tối.
 - [ ] Chiều cao toolbar bằng chiều cao header của app (mặc định 56). Thử thêm `ToolbarHeight: "64px"`: toolbar cao hơn, nút Đóng vẫn nằm giữa theo chiều dọc. `ToolbarHeight: "20px"` cho ra 44.
 - [ ] `ToolbarHeightClass: "header-top"`: toolbar cao bằng phần header dưới status bar (56 với theme mặc định).
+- [ ] Nút Đóng nằm bên phải toolbar trên cả iOS và Android.
 - [ ] `CloseButtonIcon: True`: iOS và Android hiện icon X đúng màu, bấm vào thì đóng mini app. Bật VoiceOver/TalkBack: nút được đọc là "Đóng".
 - [ ] iOS: nếu chữ status bar không đổi màu, kiểm tra `Info.plist` của app. Nếu `UIViewControllerBasedStatusBarAppearance` là `NO`, iOS bỏ qua style riêng của InAppBrowser và dùng style chung của app.
 - [ ] Android 14 trở xuống: status bar màu primary, icon status bar đúng màu (trắng hoặc tối).
@@ -186,9 +198,19 @@ Token:
 - [ ] `MiniApp_SetToken("")`: `getToken()` đang chờ bị reject.
 - [ ] Trang redirect sang domain không có trong `AllowedOrigins`: `getToken()` không nhận được token (timeout sau 30 giây).
 
+Quyền thiết bị (dùng một trang test trên origin của đối tác gọi `getUserMedia({ video: true, audio: true })` và `navigator.geolocation.getCurrentPosition(...)`):
+
+- [ ] Android: hiện hộp thoại "… muốn dùng camera và micro của bạn". Chọn "Không cho phép" thì trang báo lỗi quyền. Chọn "Cho phép" thì camera chạy; nếu app chưa có quyền camera thì Android hỏi thêm một lần.
+- [ ] Android: gọi lại `getUserMedia` trong cùng phiên thì không hỏi lại. Đóng rồi mở lại mini app thì hỏi lại.
+- [ ] Android: vị trí hiện hộp thoại "… muốn biết vị trí của bạn". Xin lại trong cùng phiên thì không hỏi nữa.
+- [ ] Trang ở một origin **không** có trong `AllowedOrigins` (ví dụ sau khi bấm link ra ngoài) gọi camera hoặc vị trí: bị từ chối ngay, không có hộp thoại.
+- [ ] iOS 15 trở lên: camera hiện hộp thoại của WebKit với origin trong `AllowedOrigins`, và bị từ chối với origin khác.
+
 Hành vi chung:
 
 - [ ] `MiniAppBridge.close()` đóng mini app, và `OnMessage` nhận được type `close` kèm payload.
 - [ ] Gửi một type ngoài `AllowedTypes`: app không nhận được message.
 - [ ] Nút back phần cứng trên Android: lùi lịch sử web, về tới trang đầu thì đóng mini app.
 - [ ] Sau khi đóng mini app, app OutSystems vẫn giữ phiên đăng nhập.
+- [ ] Mở và đóng mini app 10–20 lần liên tiếp, kể cả luồng có `window.open` như thanh toán: app không chậm dần, không bị kill vì hết bộ nhớ.
+- [ ] `Url` là `http://...`: mini app không mở, `OnError` báo "Url must be an https URL".

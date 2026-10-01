@@ -26,7 +26,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 
 import android.annotation.TargetApi;
-import android.os.Build;
 import android.os.Message;
 import android.webkit.JsPromptResult;
 import android.webkit.WebChromeClient;
@@ -48,10 +47,10 @@ public class InAppChromeClient extends WebChromeClient {
         this.webView = webView;
     }
     
+    // OutSystems fork: deny by default. InAppBrowser overrides this to ask the user first.
+    @Override
     public void onPermissionRequest(final PermissionRequest request) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            request.grant(request.getResources());
-        }
+        request.deny();
     }
 
     /**
@@ -80,8 +79,8 @@ public class InAppChromeClient extends WebChromeClient {
      */
     @Override
     public void onGeolocationPermissionsShowPrompt(String origin, Callback callback) {
-        super.onGeolocationPermissionsShowPrompt(origin, callback);
-        callback.invoke(origin, true, false);
+        // OutSystems fork: deny by default. InAppBrowser overrides this to ask the user first.
+        callback.invoke(origin, false, false);
     }
 
     /**

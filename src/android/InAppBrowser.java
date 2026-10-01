@@ -19,9 +19,12 @@
 
 package org.apache.cordova.inappbrowser;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -35,6 +38,8 @@ import android.net.http.SslError;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.text.InputType;
 import android.util.TypedValue;
@@ -42,6 +47,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -50,6 +56,7 @@ import android.view.WindowManager.LayoutParams;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.CookieManager;
+import android.webkit.GeolocationPermissions;
 import android.webkit.HttpAuthHandler;
 import android.webkit.JavascriptInterface;
 import android.webkit.SslErrorHandler;
@@ -60,6 +67,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.DownloadListener;
+import android.webkit.PermissionRequest;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
 import android.widget.ImageButton;
@@ -87,6 +95,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.StringTokenizer;
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -131,10 +143,13 @@ public class InAppBrowser extends CordovaPlugin {
     private static final String CLOSE_BUTTON_ICON = "closebuttonicon";
     // OutSystems fork: toolbar height in dp; default TOOLBAR_HEIGHT
     private static final String TOOLBAR_HEIGHT_OPTION = "toolbarheight";
+    // OutSystems fork: origins whose pages may ask for the camera, microphone and location,
+    // separated by "|". Without it, any origin may ask. The user always confirms first.
+    private static final String PERMISSION_ORIGINS = "permissionorigins";
 
     private static final int TOOLBAR_HEIGHT = 48;
 
-    private static final List customizableOptions = Arrays.asList(CLOSE_BUTTON_CAPTION, TOOLBAR_COLOR, NAVIGATION_COLOR, CLOSE_BUTTON_COLOR, FOOTER_COLOR, STATUS_BAR_COLOR, STATUS_BAR_STYLE, TOOLBAR_HEIGHT_OPTION);
+    private static final List customizableOptions = Arrays.asList(CLOSE_BUTTON_CAPTION, TOOLBAR_COLOR, NAVIGATION_COLOR, CLOSE_BUTTON_COLOR, FOOTER_COLOR, STATUS_BAR_COLOR, STATUS_BAR_STYLE, TOOLBAR_HEIGHT_OPTION, PERMISSION_ORIGINS);
 
     private InAppBrowserDialog dialog;
     private WebView inAppWebView;
@@ -167,6 +182,14 @@ public class InAppBrowser extends CordovaPlugin {
     private String statusBarStyle = "";
     private boolean closeButtonIcon = false;
     private int toolbarHeight = TOOLBAR_HEIGHT;
+    private String[] permissionOrigins = null;
+    // "<origin> <resource>" pairs the user allowed while this browser is open
+    private final Set<String> allowedPermissions = new HashSet<String>();
+    private final Map<Integer, PendingPermissions> pendingPermissions = new HashMap<Integer, PendingPermissions>();
+    private int nextPermissionRequestCode = 0;
+    private AlertDialog permissionDialog;
+    // Transport WebViews created for window.open, destroyed once they are no longer needed
+    private final List<WebView> popupWebViews = new ArrayList<WebView>();
     private String[] allowedSchemes;
     private InAppBrowserClient currentClient;
 
@@ -286,6 +309,10 @@ public class InAppBrowser extends CordovaPlugin {
                 @SuppressLint("NewApi")
                 @Override
                 public void run() {
+                    if (inAppWebView == null) {
+                        // Closed in the meantime
+                        return;
+                    }
                     if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
                         currentClient.waitForBeforeload = false;
                         inAppWebView.setWebViewClient(currentClient);
@@ -376,7 +403,7 @@ public class InAppBrowser extends CordovaPlugin {
      */
     @Override
     public void onPause(boolean multitasking) {
-        if (shouldPauseInAppBrowser) {
+        if (shouldPauseInAppBrowser && inAppWebView != null) {
             inAppWebView.onPause();
         }
     }
@@ -386,7 +413,7 @@ public class InAppBrowser extends CordovaPlugin {
      */
     @Override
     public void onResume(boolean multitasking) {
-        if (shouldPauseInAppBrowser) {
+        if (shouldPauseInAppBrowser && inAppWebView != null) {
             inAppWebView.onResume();
         }
     }
@@ -551,13 +578,27 @@ public class InAppBrowser extends CordovaPlugin {
                     return;
                 }
 
+                // OutSystems fork: nothing the page asked for is granted once it is closed.
+                dismissPermissionDialog();
+                pendingPermissions.clear();
+                destroyPopupWebViews();
+
                 childView.setWebViewClient(new WebViewClient() {
+                    private boolean closed = false;
+
                     // NB: wait for about:blank before dismissing
                     public void onPageFinished(WebView view, String url) {
-                        if (dialog != null && !cordova.getActivity().isFinishing()) {
+                        if (closed) {
+                            return;
+                        }
+                        closed = true;
+                        // OutSystems fork: if a new browser was opened meanwhile, its dialog stays.
+                        if (dialog != null && inAppWebView == childView && !cordova.getActivity().isFinishing()) {
                             dialog.dismiss();
                             dialog = null;
                         }
+                        // OutSystems fork: free the native WebView now rather than at the next GC.
+                        destroyWebView(childView);
                     }
                 });
                 // NB: From SDK 19: "If you call methods on WebView from any thread
@@ -577,10 +618,292 @@ public class InAppBrowser extends CordovaPlugin {
     }
 
     /**
+     * OutSystems fork: releases a WebView right away instead of at the next GC. Posted, since it
+     * may be called from one of the WebView's own callbacks.
+     */
+    private void destroyWebView(final WebView webView) {
+        if (webView == null) {
+            return;
+        }
+        if (inAppWebView == webView) {
+            inAppWebView = null;
+            currentClient = null;
+        }
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                ViewParent parent = webView.getParent();
+                if (parent instanceof ViewGroup) {
+                    ((ViewGroup) parent).removeView(webView);
+                }
+                webView.stopLoading();
+                webView.destroy();
+            }
+        });
+    }
+
+    private void destroyPopupWebView(WebView popup) {
+        if (popupWebViews.remove(popup)) {
+            destroyWebView(popup);
+        }
+    }
+
+    private void destroyPopupWebViews() {
+        for (WebView popup : new ArrayList<WebView>(popupWebViews)) {
+            destroyPopupWebView(popup);
+        }
+    }
+
+    /**
+     * OutSystems fork: camera and microphone requests from a page. Only pages on a
+     * permissionorigins origin may ask. The user confirms in a dialog, once per origin while the
+     * browser is open, then Android asks for its runtime permission if the app does not have it yet.
+     */
+    private void onPagePermissionRequest(final PermissionRequest request) {
+        final String origin = originOf(request.getOrigin());
+        final List<String> resources = new ArrayList<String>();
+        final List<String> androidPermissions = new ArrayList<String>();
+        for (String resource : request.getResources()) {
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
+                resources.add(resource);
+                androidPermissions.add(Manifest.permission.CAMERA);
+            } else if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                resources.add(resource);
+                androidPermissions.add(Manifest.permission.RECORD_AUDIO);
+            }
+            // Other resources (protected media, MIDI) are never granted.
+        }
+        if (resources.isEmpty() || !isPermissionOrigin(origin)) {
+            answerPermissionRequest(request, null);
+            return;
+        }
+
+        boolean camera = resources.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE);
+        boolean microphone = resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE);
+        String message = camera && microphone
+                ? localized("muốn dùng camera và micro của bạn.", "wants to use your camera and microphone.")
+                : camera
+                        ? localized("muốn dùng camera của bạn.", "wants to use your camera.")
+                        : localized("muốn dùng micro của bạn.", "wants to use your microphone.");
+        List<String> keys = new ArrayList<String>();
+        for (String resource : resources) {
+            keys.add(origin + " " + resource);
+        }
+        askUser(origin, keys, message, new Runnable() {
+            @Override
+            public void run() {
+                requestAndroidPermissions(androidPermissions, new PermissionsCallback() {
+                    @Override
+                    public void onResult(Set<String> granted) {
+                        // Grant what Android allows too, e.g. the camera without the microphone.
+                        List<String> allowed = new ArrayList<String>();
+                        for (int i = 0; i < resources.size(); i++) {
+                            if (granted.contains(androidPermissions.get(i))) {
+                                allowed.add(resources.get(i));
+                            }
+                        }
+                        answerPermissionRequest(request, allowed);
+                    }
+                });
+            }
+        }, new Runnable() {
+            @Override
+            public void run() {
+                answerPermissionRequest(request, null);
+            }
+        });
+    }
+
+    // grant() and deny() throw once the request was answered or cancelled by the page.
+    private void answerPermissionRequest(PermissionRequest request, List<String> resources) {
+        try {
+            if (resources == null || resources.isEmpty()) {
+                request.deny();
+            } else {
+                request.grant(resources.toArray(new String[0]));
+            }
+        } catch (RuntimeException e) {
+            LOG.d(LOG_TAG, "Permission request no longer pending: " + e.getMessage());
+        }
+    }
+
+    /**
+     * OutSystems fork: location requests from a page, same rules as onPagePermissionRequest.
+     * WebView does not retain the answer; askUser remembers it until the browser closes.
+     */
+    private void onPageGeolocationRequest(final String origin, final GeolocationPermissions.Callback callback) {
+        final String pageOrigin = originOf(Uri.parse(origin));
+        if (!isPermissionOrigin(pageOrigin)) {
+            callback.invoke(origin, false, false);
+            return;
+        }
+        final List<String> androidPermissions = Arrays.asList(
+                Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION);
+        askUser(pageOrigin, Arrays.asList(pageOrigin + " location"),
+                localized("muốn biết vị trí của bạn.", "wants to know your location."), new Runnable() {
+            @Override
+            public void run() {
+                requestAndroidPermissions(androidPermissions, new PermissionsCallback() {
+                    @Override
+                    public void onResult(Set<String> granted) {
+                        // Approximate location alone is enough.
+                        callback.invoke(origin, !granted.isEmpty(), false);
+                    }
+                });
+            }
+        }, new Runnable() {
+            @Override
+            public void run() {
+                callback.invoke(origin, false, false);
+            }
+        });
+    }
+
+    // Asks the user unless all keys ("<origin> <resource>") were allowed while the browser is open.
+    // One question at a time.
+    private void askUser(String origin, final List<String> keys, String message, final Runnable onAllow, final Runnable onDeny) {
+        if (allowedPermissions.containsAll(keys)) {
+            onAllow.run();
+            return;
+        }
+        if (permissionDialog != null) {
+            onDeny.run();
+            return;
+        }
+        final boolean[] answered = { false };
+        final AlertDialog question = new AlertDialog.Builder(cordova.getActivity())
+                .setMessage(Uri.parse(origin).getHost() + " " + message)
+                .setPositiveButton(localized("Cho phép", "Allow"), new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface d, int which) {
+                        answered[0] = true;
+                        allowedPermissions.addAll(keys);
+                        onAllow.run();
+                    }
+                })
+                .setNegativeButton(localized("Không cho phép", "Don't allow"), new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface d, int which) {
+                        answered[0] = true;
+                        onDeny.run();
+                    }
+                })
+                .create();
+        // Back, a tap outside, the page cancelling or the browser closing all count as a refusal.
+        question.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface d) {
+                if (permissionDialog == question) {
+                    permissionDialog = null;
+                }
+                if (!answered[0]) {
+                    answered[0] = true;
+                    onDeny.run();
+                }
+            }
+        });
+        permissionDialog = question;
+        try {
+            question.show();
+        } catch (RuntimeException e) {
+            // The activity is going away.
+            permissionDialog = null;
+            answered[0] = true;
+            onDeny.run();
+        }
+    }
+
+    private void dismissPermissionDialog() {
+        AlertDialog question = permissionDialog;
+        permissionDialog = null;
+        if (question != null) {
+            question.dismiss();
+        }
+    }
+
+    private boolean isPermissionOrigin(String origin) {
+        return !origin.isEmpty() && (permissionOrigins == null || Arrays.asList(permissionOrigins).contains(origin));
+    }
+
+    // scheme://host[:port] without the default port, like window.location.origin
+    private static String originOf(Uri uri) {
+        if (uri == null || uri.getScheme() == null || uri.getHost() == null) {
+            return "";
+        }
+        String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
+        int port = uri.getPort();
+        boolean defaultPort = port == -1 || ("https".equals(scheme) && port == 443) || ("http".equals(scheme) && port == 80);
+        return scheme + "://" + uri.getHost().toLowerCase(Locale.ROOT) + (defaultPort ? "" : ":" + port);
+    }
+
+    private static String localized(String vietnamese, String english) {
+        return "vi".equals(Locale.getDefault().getLanguage()) ? vietnamese : english;
+    }
+
+    private interface PermissionsCallback {
+        void onResult(Set<String> granted);
+    }
+
+    private static class PendingPermissions {
+        final Set<String> granted;
+        final PermissionsCallback callback;
+
+        PendingPermissions(Set<String> granted, PermissionsCallback callback) {
+            this.granted = granted;
+            this.callback = callback;
+        }
+    }
+
+    // Asks Android for the runtime permissions the app does not have yet.
+    private void requestAndroidPermissions(List<String> permissions, PermissionsCallback callback) {
+        Set<String> granted = new HashSet<String>();
+        List<String> missing = new ArrayList<String>();
+        for (String permission : permissions) {
+            if (cordova.hasPermission(permission)) {
+                granted.add(permission);
+            } else if (!missing.contains(permission)) {
+                missing.add(permission);
+            }
+        }
+        if (missing.isEmpty()) {
+            callback.onResult(granted);
+            return;
+        }
+        int requestCode = nextPermissionRequestCode++;
+        pendingPermissions.put(requestCode, new PendingPermissions(granted, callback));
+        cordova.requestPermissions(this, requestCode, missing.toArray(new String[0]));
+    }
+
+    // Called by cordova-android up to 14.
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onRequestPermissionResult(int requestCode, String[] permissions, int[] grantResults) {
+        onPermissionsResult(requestCode, permissions, grantResults);
+    }
+
+    // Newer name of the callback; no @Override, since older cordova-android versions lack it.
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        onPermissionsResult(requestCode, permissions, grantResults);
+    }
+
+    private void onPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        PendingPermissions pending = pendingPermissions.remove(requestCode);
+        if (pending == null) {
+            return;
+        }
+        for (int i = 0; i < permissions.length && i < grantResults.length; i++) {
+            if (grantResults[i] == PackageManager.PERMISSION_GRANTED) {
+                pending.granted.add(permissions[i]);
+            }
+        }
+        pending.callback.onResult(pending.granted);
+    }
+
+    /**
      * Checks to see if it is possible to go back one page in history, then does so.
      */
     public void goBack() {
-        if (this.inAppWebView.canGoBack()) {
+        if (this.inAppWebView != null && this.inAppWebView.canGoBack()) {
             this.inAppWebView.goBack();
         }
     }
@@ -590,7 +913,7 @@ public class InAppBrowser extends CordovaPlugin {
      * @return boolean
      */
     public boolean canGoBack() {
-        return this.inAppWebView.canGoBack();
+        return this.inAppWebView != null && this.inAppWebView.canGoBack();
     }
 
     /**
@@ -605,7 +928,7 @@ public class InAppBrowser extends CordovaPlugin {
      * Checks to see if it is possible to go forward one page in history, then does so.
      */
     private void goForward() {
-        if (this.inAppWebView.canGoForward()) {
+        if (this.inAppWebView != null && this.inAppWebView.canGoForward()) {
             this.inAppWebView.goForward();
         }
     }
@@ -616,6 +939,9 @@ public class InAppBrowser extends CordovaPlugin {
      * @param url to load
      */
     private void navigate(String url) {
+        if (this.inAppWebView == null) {
+            return;
+        }
         InputMethodManager imm = (InputMethodManager)this.cordova.getActivity().getSystemService(Context.INPUT_METHOD_SERVICE);
         imm.hideSoftInputFromWindow(edittext.getWindowToken(), 0);
 
@@ -658,6 +984,10 @@ public class InAppBrowser extends CordovaPlugin {
         statusBarStyle = "";
         closeButtonIcon = false;
         toolbarHeight = TOOLBAR_HEIGHT;
+        permissionOrigins = null;
+        allowedPermissions.clear();
+        pendingPermissions.clear();
+        dismissPermissionDialog();
 
         if (features != null) {
             String show = features.get(LOCATION);
@@ -766,6 +1096,18 @@ public class InAppBrowser extends CordovaPlugin {
                 } catch (NumberFormatException e) {
                     LOG.e(LOG_TAG, "Invalid toolbarheight: " + toolbarHeightSet);
                 }
+            }
+            String permissionOriginsSet = features.get(PERMISSION_ORIGINS);
+            if (permissionOriginsSet != null) {
+                // Invalid entries are dropped, so a list with none left denies every origin.
+                List<String> origins = new ArrayList<String>();
+                for (String entry : permissionOriginsSet.split("\\|")) {
+                    String origin = originOf(Uri.parse(entry.trim()));
+                    if (!origin.isEmpty()) {
+                        origins.add(origin);
+                    }
+                }
+                permissionOrigins = origins.toArray(new String[0]);
             }
         }
 
@@ -906,6 +1248,9 @@ public class InAppBrowser extends CordovaPlugin {
                 if (dialog != null) {
                     dialog.dismiss();
                 };
+                // OutSystems fork: also free the previous WebViews, in case the last close did not finish.
+                destroyWebView(inAppWebView);
+                destroyPopupWebViews();
 
                 // Let's create the main dialog
                 dialog = new InAppBrowserDialog(cordova.getActivity(), android.R.style.Theme_NoTitleBar);
@@ -1075,6 +1420,27 @@ public class InAppBrowser extends CordovaPlugin {
                 inAppWebView.setId(Integer.valueOf(6));
                 // File Chooser Implemented ChromeClient
                 inAppWebView.setWebChromeClient(new InAppChromeClient(thatWebView) {
+                    // OutSystems fork: camera, microphone and location only after the user agrees.
+                    @Override
+                    public void onPermissionRequest(PermissionRequest request) {
+                        onPagePermissionRequest(request);
+                    }
+
+                    @Override
+                    public void onPermissionRequestCanceled(PermissionRequest request) {
+                        dismissPermissionDialog();
+                    }
+
+                    @Override
+                    public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+                        onPageGeolocationRequest(origin, callback);
+                    }
+
+                    @Override
+                    public void onGeolocationPermissionsHidePrompt() {
+                        dismissPermissionDialog();
+                    }
+
                     @Override
                     public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
                         // New-window navigations (for example window.open or target=_blank)
@@ -1090,7 +1456,7 @@ public class InAppBrowser extends CordovaPlugin {
                              */
                             @Override
                             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                                return handleNewWindowUrl(request.getUrl().toString(), request.getMethod());
+                                return handleNewWindowUrl(view, request.getUrl().toString(), request.getMethod());
                             }
 
                             /**
@@ -1099,10 +1465,10 @@ public class InAppBrowser extends CordovaPlugin {
                              */
                             @Override
                             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                                return handleNewWindowUrl(url, null);
+                                return handleNewWindowUrl(view, url, null);
                             }
 
-                            private boolean handleNewWindowUrl(String targetUrl, String method) {
+                            private boolean handleNewWindowUrl(WebView popup, String targetUrl, String method) {
                                 // WebView commonly initializes popup flows with about:blank.
                                 // Forwarding this placeholder URL into the main WebView can
                                 // replace the current page and break subsequent navigation,
@@ -1110,6 +1476,10 @@ public class InAppBrowser extends CordovaPlugin {
                                 if ("about:blank".equals(targetUrl)) {
                                     return false;
                                 }
+
+                                // OutSystems fork: the navigation leaves the transport WebView,
+                                // which is no longer needed.
+                                destroyPopupWebView(popup);
 
                                 // Reuse the main client so beforeload and scheme routing are
                                 // applied exactly like regular navigations.
@@ -1129,6 +1499,8 @@ public class InAppBrowser extends CordovaPlugin {
                         // to the active InAppBrowser WebView/client above.
                         final WebView newWebView = new WebView(view.getContext());
                         newWebView.setWebViewClient(webViewClient);
+                        // OutSystems fork: tracked so it is destroyed, at the latest when the browser closes.
+                        popupWebViews.add(newWebView);
 
                         final WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
                         transport.setWebView(newWebView);

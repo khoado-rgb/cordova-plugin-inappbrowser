@@ -466,14 +466,10 @@ static UIBarButtonSystemItem CDVWKInAppBrowserCloseButtonSystemItem(void)
 // Synchronous helper for javascript evaluation
 - (void)evaluateJavaScript:(NSString *)script
 {
-    __block NSString *_script = script;
     [self.inAppBrowserViewController.webView evaluateJavaScript:script completionHandler:^(id result, NSError *error) {
-        if (error == nil) {
-            if (result != nil) {
-                NSLog(@"%@", result);
-            }
-        } else {
-            NSLog(@"evaluateJavaScript error : %@ : %@", error.localizedDescription, _script);
+        // OutSystems fork: never log the script or its result, which can hold a token.
+        if (error != nil) {
+            NSLog(@"evaluateJavaScript error: %@ %ld", error.domain, (long)error.code);
         }
     }];
 }
@@ -629,7 +625,12 @@ static UIBarButtonSystemItem CDVWKInAppBrowserCloseButtonSystemItem(void)
 
 #pragma mark WKScriptMessageHandler delegate
 - (void)userContentController:(nonnull WKUserContentController *)userContentController didReceiveScriptMessage:(nonnull WKScriptMessage *)message
-{    
+{
+    // OutSystems fork: only the main frame may talk to the app, not its iframes (ads, analytics).
+    if (!message.frameInfo.isMainFrame) {
+        return;
+    }
+
     CDVPluginResult *pluginResult = nil;
 
     if ([message.body isKindOfClass:[NSDictionary class]]) {
@@ -767,6 +768,9 @@ BOOL isExiting = NO;
         _settings = settings;
         self.webViewUIDelegate = [[CDVWKInAppBrowserUIDelegate alloc] initWithTitle:[[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"]];
         [self.webViewUIDelegate setViewController:self];
+        if (browserOptions.permissionorigins != nil) {
+            self.webViewUIDelegate.permissionOrigins = [CDVWKInAppBrowserUIDelegate originsFromList:browserOptions.permissionorigins];
+        }
         [self createViews];
     }
 
@@ -787,6 +791,8 @@ BOOL isExiting = NO;
 
     configuration.applicationNameForUserAgent = userAgent;
     configuration.userContentController = userContentController;
+    // OutSystems fork: kept, so browserExit can remove the script message handler again.
+    self.configuration = configuration;
 #if __has_include(<Cordova/CDVWebViewProcessPoolFactory.h>)
     if (@available(iOS 15.0, *)) {
         // Since iOS 15 WKProcessPool is deprecated and has no effect

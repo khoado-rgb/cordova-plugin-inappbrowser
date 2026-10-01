@@ -50,6 +50,7 @@
         self.statusbarstyle = nil;
         self.closebuttonicon = NO;
         self.toolbarheight = 0;
+        self.permissionorigins = nil;
     }
 
     return self;
