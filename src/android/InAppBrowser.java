@@ -103,6 +103,7 @@ import java.io.ByteArrayInputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -171,8 +172,11 @@ public class InAppBrowser extends CordovaPlugin {
     private static final float MIN_CLOSE_BUTTON_SIZE = 8;
     private static final float MAX_CLOSE_BUTTON_SIZE = 40;
     private static final int MAX_POPUP_WEBVIEWS = 3;
-    // httpsonly: the same http page blocked again within this time shows a blank page, not the page before
+    // httpsonly: the same http page (query and fragment aside) blocked again within this time, or this
+    // many http pages blocked within INSECURE_BURST_MS, show a blank page rather than the page before
     private static final long INSECURE_REPEAT_MS = 10000;
+    private static final int INSECURE_BURST_COUNT = 3;
+    private static final long INSECURE_BURST_MS = 60000;
 
     private static final List customizableOptions = Arrays.asList(CLOSE_BUTTON_CAPTION, TOOLBAR_COLOR, NAVIGATION_COLOR, CLOSE_BUTTON_COLOR, FOOTER_COLOR, STATUS_BAR_COLOR, STATUS_BAR_STYLE, TOOLBAR_HEIGHT_OPTION, PERMISSION_ORIGINS, TOOLBAR_TITLE, CLOSE_BUTTON_SIZE);
 
@@ -852,6 +856,13 @@ public class InAppBrowser extends CordovaPlugin {
 
     private boolean isPermissionOrigin(String origin) {
         return !origin.isEmpty() && (permissionOrigins == null || Arrays.asList(permissionOrigins).contains(origin));
+    }
+
+    // origin and path of a URL, without its query and fragment; "/" for an empty path
+    private static String pageOf(String url) {
+        Uri uri = Uri.parse(url);
+        String path = uri.getPath();
+        return originOf(uri) + (path == null || path.isEmpty() ? "/" : path);
     }
 
     // scheme://host[:port] without the default port, like window.location.origin
@@ -1899,9 +1910,11 @@ public class InAppBrowser extends CordovaPlugin {
         boolean waitForBeforeload;
         // OutSystems fork: httpsonly stopped an http page and is showing about:blank instead.
         private boolean blankingInsecurePage = false;
-        // OutSystems fork: the last http page httpsonly stopped, and when.
-        private String lastInsecureUrl = null;
+        // OutSystems fork: the last http page httpsonly stopped (without query and fragment), and
+        // when the recent ones were stopped.
+        private String lastInsecurePage = null;
         private long lastInsecureAt = 0;
+        private final ArrayDeque<Long> recentInsecureBlocks = new ArrayDeque<Long>();
 
         /**
          * Constructor.
@@ -2144,20 +2157,28 @@ public class InAppBrowser extends CordovaPlugin {
                 // goBack() and goBackOrForward() skip the pages that navigated without a user
                 // gesture (Chromium history intervention), and may then not move.
                 // Posted, once this page has committed.
-                // A page that sends itself to the same http page again as soon as it is back, like
-                // a form that submits itself on load, would loop: the second time within
-                // INSECURE_REPEAT_MS, a blank page instead.
+                // A page that sends itself to http again as soon as it is back, like a form that
+                // submits itself on load, would loop: a blank page instead when the same http page
+                // comes back within INSECURE_REPEAT_MS (its query, say a CSRF token, may change),
+                // or at the INSECURE_BURST_COUNT-th block within INSECURE_BURST_MS (any http page).
                 long now = SystemClock.elapsedRealtime();
-                boolean repeated = url.equals(lastInsecureUrl) && now - lastInsecureAt < INSECURE_REPEAT_MS;
-                lastInsecureUrl = url;
+                String page = pageOf(url);
+                while (!recentInsecureBlocks.isEmpty() && now - recentInsecureBlocks.peekFirst() >= INSECURE_BURST_MS) {
+                    recentInsecureBlocks.pollFirst();
+                }
+                recentInsecureBlocks.addLast(now);
+                boolean repeated = (page.equals(lastInsecurePage) && now - lastInsecureAt < INSECURE_REPEAT_MS)
+                        || recentInsecureBlocks.size() >= INSECURE_BURST_COUNT;
+                lastInsecurePage = page;
                 lastInsecureAt = now;
                 final boolean hasPageBefore = !repeated && history.getCurrentIndex() > 0;
                 if (!hasPageBefore) {
                     blankingInsecurePage = true;
                     // From the blank page, Back to this http page goes back to the page before
                     // again, instead of to one more blank page.
-                    lastInsecureUrl = null;
+                    lastInsecurePage = null;
                     lastInsecureAt = 0;
+                    recentInsecureBlocks.clear();
                 }
                 view.post(new Runnable() {
                     @Override
