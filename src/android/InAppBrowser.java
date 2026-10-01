@@ -41,6 +41,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.os.SystemClock;
 import android.graphics.Typeface;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -170,6 +171,8 @@ public class InAppBrowser extends CordovaPlugin {
     private static final float MIN_CLOSE_BUTTON_SIZE = 8;
     private static final float MAX_CLOSE_BUTTON_SIZE = 40;
     private static final int MAX_POPUP_WEBVIEWS = 3;
+    // httpsonly: the same http page blocked again within this time shows a blank page, not the page before
+    private static final long INSECURE_REPEAT_MS = 10000;
 
     private static final List customizableOptions = Arrays.asList(CLOSE_BUTTON_CAPTION, TOOLBAR_COLOR, NAVIGATION_COLOR, CLOSE_BUTTON_COLOR, FOOTER_COLOR, STATUS_BAR_COLOR, STATUS_BAR_STYLE, TOOLBAR_HEIGHT_OPTION, PERMISSION_ORIGINS, TOOLBAR_TITLE, CLOSE_BUTTON_SIZE);
 
@@ -1896,6 +1899,9 @@ public class InAppBrowser extends CordovaPlugin {
         boolean waitForBeforeload;
         // OutSystems fork: httpsonly stopped an http page and is showing about:blank instead.
         private boolean blankingInsecurePage = false;
+        // OutSystems fork: the last http page httpsonly stopped, and when.
+        private String lastInsecureUrl = null;
+        private long lastInsecureAt = 0;
 
         /**
          * Constructor.
@@ -2138,9 +2144,20 @@ public class InAppBrowser extends CordovaPlugin {
                 // goBack() and goBackOrForward() skip the pages that navigated without a user
                 // gesture (Chromium history intervention), and may then not move.
                 // Posted, once this page has committed.
-                final boolean hasPageBefore = history.getCurrentIndex() > 0;
+                // A page that sends itself to the same http page again as soon as it is back, like
+                // a form that submits itself on load, would loop: the second time within
+                // INSECURE_REPEAT_MS, a blank page instead.
+                long now = SystemClock.elapsedRealtime();
+                boolean repeated = url.equals(lastInsecureUrl) && now - lastInsecureAt < INSECURE_REPEAT_MS;
+                lastInsecureUrl = url;
+                lastInsecureAt = now;
+                final boolean hasPageBefore = !repeated && history.getCurrentIndex() > 0;
                 if (!hasPageBefore) {
                     blankingInsecurePage = true;
+                    // From the blank page, Back to this http page goes back to the page before
+                    // again, instead of to one more blank page.
+                    lastInsecureUrl = null;
+                    lastInsecureAt = 0;
                 }
                 view.post(new Runnable() {
                     @Override
