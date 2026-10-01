@@ -20,7 +20,7 @@
 -->
 # Release Notes
 
-## 7.0.1-os.8 (unreleased)
+## 7.0.1-os.8
 
 * fix(android): a page that sends itself to the same http page again as soon as it is back, like a form that submits itself on load, no longer loops under `httpsonly`: the same http page blocked again within 10 seconds shows a blank page instead of the page before, and Back from that blank page goes back to the page before (a page that submits itself again then ends on the blank page again; the close button is the way out)
 

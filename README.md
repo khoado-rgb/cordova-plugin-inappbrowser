@@ -50,7 +50,7 @@ This repository is a fork of [apache/cordova-plugin-inappbrowser](https://github
 
 Install a tagged release from Git:
 
-    cordova plugin add https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.7
+    cordova plugin add https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.8
 
 Changes from the upstream plugin:
 

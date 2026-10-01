@@ -4,7 +4,7 @@ Bản fork của [apache/cordova-plugin-inappbrowser](https://github.com/apache/
 
 ## Các thay đổi so với bản gốc
 
-Bản hiện tại: `7.0.1-os.7`. Chi tiết từng bản ở [RELEASENOTES.md](../RELEASENOTES.md).
+Bản hiện tại: `7.0.1-os.8`. Chi tiết từng bản ở [RELEASENOTES.md](../RELEASENOTES.md).
 
 ### Option mới của `cordova.InAppBrowser.open`
 
@@ -106,11 +106,11 @@ Plugin được publish từ repo [khoado-rgb/cordova-plugin-inappbrowser](https
 
 ```sh
 git push origin master
-git tag 7.0.1-os.7
-git push origin 7.0.1-os.7
+git tag 7.0.1-os.8
+git push origin 7.0.1-os.8
 ```
 
-MABS lấy plugin theo tag, nên mỗi lần sửa plugin phải tạo tag mới (`7.0.1-os.8`, ...) và cập nhật URL trong Extensibility Configurations. Không sửa lại một tag đã dùng để build.
+MABS lấy plugin theo tag, nên mỗi lần sửa plugin phải tạo tag mới (`7.0.1-os.9`, ...) và cập nhật URL trong Extensibility Configurations. Không sửa lại một tag đã dùng để build.
 
 Nếu repo để private, MABS phải có quyền đọc repo. Khi đó dùng URL có token, hoặc để repo public.
 
@@ -121,7 +121,7 @@ Nếu repo để private, MABS phải có quyền đọc repo. Khi đó dùng UR
 ```json
 {
   "plugin": {
-    "url": "https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.7"
+    "url": "https://github.com/khoado-rgb/cordova-plugin-inappbrowser.git#7.0.1-os.8"
   }
 }
 ```
